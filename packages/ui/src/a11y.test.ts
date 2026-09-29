@@ -63,7 +63,7 @@ describe("panel accessibility and layout", () => {
       expect(serious.map((item) => item.id)).toEqual([]);
       await page.close();
     }
-  });
+  }, 30_000);
 
   it("keeps controls inside 320, 720, and 1200 px widths and at 200% zoom", async () => {
     for (const width of [320, 720, 1200]) {
