@@ -1,0 +1,36 @@
+{
+  "name": "@smartmerge/daemon",
+  "version": "0.0.0",
+  "private": true,
+  "description": "JSON-RPC daemon. Walking skeleton for initialize, conflicts/list, and resolution/propose.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "bin": {
+    "smartmerged": "./dist/bin.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run --config ../../vitest.config.ts",
+    "prepublishOnly": "tsx ../../tools/assert-git-publish.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.0"
+  },
+  "dependencies": {
+    "@smartmerge/core": "workspace:*",
+    "@smartmerge/git": "workspace:*",
+    "@smartmerge/protocol": "workspace:*",
+    "vscode-jsonrpc": "^9.0.3"
+  }
+}

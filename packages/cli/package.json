@@ -1,0 +1,34 @@
+{
+  "name": "@smartmerge/cli",
+  "version": "0.0.0",
+  "private": true,
+  "description": "smart-merge command. Status talks to the daemon over stdio.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "bin": {
+    "smart-merge": "./dist/main.js"
+  },
+  "main": "./dist/main.js",
+  "types": "./dist/main.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/main.d.ts",
+      "default": "./dist/main.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run --config ../../vitest.config.ts",
+    "prepublishOnly": "tsx ../../tools/assert-git-publish.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.0"
+  },
+  "dependencies": {
+    "@smartmerge/daemon": "workspace:*",
+    "@smartmerge/protocol": "workspace:*"
+  }
+}
