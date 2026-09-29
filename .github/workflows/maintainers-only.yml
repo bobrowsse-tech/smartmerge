@@ -1,0 +1,68 @@
+name: Maintainers only
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  gate:
+    name: maintainers-only
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v9
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            if (!pr || pr.state !== "open") return;
+
+            const actor = pr.user.login;
+            const allowedBots = new Set(["dependabot[bot]", "github-actions[bot]"]);
+            let allowed = allowedBots.has(actor);
+
+            if (!allowed) {
+              try {
+                const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  username: actor,
+                });
+                allowed = ["admin", "maintain", "write"].includes(data.permission);
+              } catch {
+                allowed = false;
+              }
+            }
+
+            if (allowed) return;
+
+            const marker = "<!-- smartmerge-maintainers-only -->";
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              per_page: 20,
+            });
+            const alreadyNoted = comments.some((comment) => (comment.body ?? "").includes(marker));
+            if (!alreadyNoted) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: [
+                  marker,
+                  "Thanks for taking a look. This repository is public to read, clone, and fork.",
+                  "Pull requests are limited to maintainers, so this one is being closed.",
+                  "Please open an issue if you want to report a bug or suggest a change.",
+                ].join("\n\n"),
+              });
+            }
+
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              state: "closed",
+            });

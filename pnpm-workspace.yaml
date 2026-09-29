@@ -1,0 +1,9 @@
+packages:
+  - "packages/*"
+  - "packages/adapters/*"
+
+# pnpm 12 delays brand-new releases by default. This project tracks current versions.
+minimumReleaseAge: 0
+
+allowBuilds:
+  esbuild: true

@@ -1,0 +1,86 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    name: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+
+      - name: Require the tag to point at main
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "This tag does not point at a commit on main. Publish refused."
+            exit 1
+          fi
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12.6.0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+      - name: Publish public packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          node --input-type=module <<'EOF'
+          import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+          import { join } from "node:path";
+
+          const names = [];
+          function walk(dir) {
+            for (const entry of readdirSync(dir)) {
+              const full = join(dir, entry);
+              if (statSync(full).isDirectory()) {
+                if (entry === "node_modules" || entry === "dist") continue;
+                walk(full);
+              } else if (entry === "package.json") {
+                const pkg = JSON.parse(readFileSync(full, "utf8"));
+                if (pkg.private !== true && typeof pkg.name === "string") names.push(pkg.name);
+              }
+            }
+          }
+          walk("packages");
+          const modeFile = join(process.env.RUNNER_TEMP ?? ".", "publish-mode");
+          if (names.length === 0) {
+            console.log("No public packages yet. Tag recorded; npm publish skipped.");
+            writeFileSync(modeFile, "skip");
+            process.exit(0);
+          }
+          if (!process.env.NODE_AUTH_TOKEN) {
+            console.error("Public packages exist but NPM_TOKEN is not set: " + names.join(", "));
+            process.exit(1);
+          }
+          writeFileSync(modeFile, "publish");
+          EOF
+          if [ "$(cat "$RUNNER_TEMP/publish-mode")" = "publish" ]; then
+            pnpm publish -r --access public --no-git-checks
+          fi
+
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --title "$GITHUB_REF_NAME"

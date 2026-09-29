@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+.DS_Store
+coverage/
+
+# Private research and name lists must never be committed (see AGENTS.md rule 14)
+private/
+forbidden-names.json
+
+# Local build-kit archive. Not part of the product.
+smartmerge-build-kit.zip

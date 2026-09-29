@@ -1,0 +1,38 @@
+# Contributing
+
+SmartMerge is public so people can read, clone, and fork the source. Changing this repository is limited to maintainers.
+
+## Who can change `main`
+
+- `main` cannot be deleted or force-pushed.
+- Nobody pushes straight to `main`. A pull request is the only way in.
+- Pull requests from people who are not maintainers are closed by automation. Please open an issue instead.
+- Maintainers are GitHub accounts with write, maintain, or admin on this repository.
+
+## Maintainer setup
+
+Requirements: Node.js 24 (current LTS), pnpm 12.6.0, and git.
+
+```bash
+pnpm install
+pnpm typecheck
+pnpm test
+pnpm lint
+SMARTMERGE_FORBIDDEN_NAMES_FILE=private/forbidden-names.json pnpm check:public
+```
+
+`private/` is gitignored and stays on the maintainer machine. CI reads the same list from the `SMARTMERGE_FORBIDDEN_NAMES` Actions secret.
+
+## Publishing
+
+Publishing is a git operation, not a laptop `npm publish`.
+
+1. Land the change through a pull request.
+2. After it is on `main`, push a tag `vX.Y.Z` that points at that commit.
+3. The Publish workflow checks that the tag is on `main`, builds, and publishes any package that is not `"private": true`.
+
+Packages are private until the license in `docs/decisions/0001-license.md` is accepted. `prepublishOnly` exits if it is not running inside that tag workflow.
+
+## License
+
+There is no `LICENSE` file yet. Do not copy this code into another project until one is added.

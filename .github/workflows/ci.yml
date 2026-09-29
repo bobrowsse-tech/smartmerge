@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+    env:
+      TURBO_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12.6.0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm lint
+      - run: pnpm format:check
+
+      - name: Public content guard
+        env:
+          FORBIDDEN_NAMES_JSON: ${{ secrets.SMARTMERGE_FORBIDDEN_NAMES }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if [ -z "$FORBIDDEN_NAMES_JSON" ]; then
+            echo "Secret SMARTMERGE_FORBIDDEN_NAMES is not set."
+            exit 2
+          fi
+          printf '%s\n' "$FORBIDDEN_NAMES_JSON" > "$RUNNER_TEMP/forbidden-names.json"
+          mkdir -p "$RUNNER_TEMP/review-text"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            printf '%s\n' "$PR_TITLE" > "$RUNNER_TEMP/review-text/title.txt"
+            printf '%s\n' "$PR_BODY" > "$RUNNER_TEMP/review-text/body.txt"
+            git log --format=%B "origin/${{ github.base_ref }}..HEAD" > "$RUNNER_TEMP/review-text/commits.txt"
+          else
+            git log -1 --format=%B > "$RUNNER_TEMP/review-text/commit.txt"
+          fi
+          SMARTMERGE_FORBIDDEN_NAMES_FILE="$RUNNER_TEMP/forbidden-names.json" pnpm check:public . "$RUNNER_TEMP/review-text"
