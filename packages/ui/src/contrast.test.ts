@@ -37,7 +37,8 @@ describe("panel contrast", () => {
       expect(panelCss).toContain(background);
       expect(contrast(foreground, background)).toBeGreaterThanOrEqual(4.5);
     }
-    expect(panelCss).toContain("min-height: 2.9em");
+    expect(panelCss).toContain("min-height: 8em");
     expect(panelCss).toContain("min-height: 4.35em");
+    expect(panelCss).toContain("prefers-reduced-motion");
   });
 });

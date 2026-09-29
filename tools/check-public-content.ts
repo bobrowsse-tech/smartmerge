@@ -26,7 +26,17 @@ const TEXT_EXTENSIONS = new Set([
   ".cs",
   ".toml",
 ]);
-const SKIP_DIRS = new Set(["node_modules", ".git", "dist", ".turbo", "coverage", "private"]);
+const SKIP_DIRS = new Set([
+  "node_modules",
+  ".git",
+  "dist",
+  ".turbo",
+  "coverage",
+  "private",
+  ".pack",
+  ".vscode-test",
+  "storybook-static",
+]);
 
 function loadNames(): string[] {
   const file = process.env["SMARTMERGE_FORBIDDEN_NAMES_FILE"] ?? "private/forbidden-names.json";

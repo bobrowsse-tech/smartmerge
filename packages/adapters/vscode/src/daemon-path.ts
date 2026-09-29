@@ -9,9 +9,11 @@ export function daemonScript(): string {
   const fromEnv = process.env["SMARTMERGE_DAEMON"];
   if (fromEnv !== undefined && fromEnv.length > 0 && existsSync(fromEnv)) return fromEnv;
   const candidates = [
+    new URL("../daemon/smartmerged.js", import.meta.url),
+    new URL("../../../daemon/dist/bin.js", import.meta.url),
+    new URL("../node_modules/@smartmerge/daemon/dist/bin.js", import.meta.url),
     new URL("../daemon/dist/bin.js", import.meta.url),
     new URL("./bin.js", import.meta.url),
-    new URL("../../../daemon/dist/bin.js", import.meta.url),
   ];
   for (const candidate of candidates) {
     const path = fileURLToPath(candidate);

@@ -12,6 +12,8 @@ export default tseslint.config(
       "packages/ui/.storybook/**",
       "packages/ui/src/**/*.stories.tsx",
       "packages/ui/storybook-static/**",
+      "**/.pack/**",
+      "**/.vscode-test/**",
       "**/*.tsbuildinfo",
       "eslint.config.js",
       "prettier.config.js",

@@ -6,6 +6,7 @@ import {
   codeLensTitle,
   problemEntries,
   statusBarText,
+  stepConflictIndex,
 } from "./present.js";
 
 const proposal: ResolutionProposal = {
@@ -115,5 +116,12 @@ describe("editor presentation", () => {
       },
     ]);
     expect(problemEntries([proposal])).toEqual([]);
+  });
+
+  it("keeps next and previous inside the conflict list", () => {
+    expect(stepConflictIndex(0, 1, 2)).toBe(1);
+    expect(stepConflictIndex(1, 1, 2)).toBe(1);
+    expect(stepConflictIndex(0, -1, 2)).toBe(0);
+    expect(stepConflictIndex(3, 0, 0)).toBe(0);
   });
 });

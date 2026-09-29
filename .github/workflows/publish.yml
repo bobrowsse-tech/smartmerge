@@ -84,13 +84,21 @@ jobs:
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
+          SMARTMERGE_VERSION: ${{ github.ref_name }}
         run: |
           if [ -z "$VSCE_PAT" ] || [ -z "$OVSX_PAT" ]; then
             echo "VSCE_PAT or OVSX_PAT is not set. The editor extension was not published."
             exit 0
           fi
-          echo "Editor registry tokens are set. The extension package is still private, so nothing was uploaded."
-          exit 0
+          pnpm --filter @smartmerge/vscode pack:vsix
+          version="${SMARTMERGE_VERSION#v}"
+          vsix="$GITHUB_WORKSPACE/packages/adapters/vscode/smartmerge-resolver-${version}.vsix"
+          if [ ! -f "$vsix" ]; then
+            echo "The extension package was not created."
+            exit 1
+          fi
+          pnpm --filter @smartmerge/vscode exec vsce publish --pre-release --packagePath "$vsix" -p "$VSCE_PAT"
+          pnpm --filter @smartmerge/vscode exec ovsx publish "$vsix" --pre-release --pat "$OVSX_PAT"
 
       - name: GitHub Release
         env:

@@ -97,21 +97,22 @@ export const panelCss = `
   }
 }
 body { margin: 0; background: var(--sm-surface); color: var(--sm-text); }
-.sm-panel { display: grid; gap: var(--sm-space-6); padding: var(--sm-space-4); max-width: 72ch; }
-.sm-header, .sm-intent, .sm-result, .sm-actions { display: grid; gap: var(--sm-space-2); }
+.sm-panel { box-sizing: border-box; display: grid; gap: var(--sm-space-6); padding: var(--sm-space-4); width: min(100%, 72ch); max-width: 100%; }
+.sm-header, .sm-intent, .sm-result, .sm-actions { display: grid; gap: var(--sm-space-2); min-width: 0; }
 .sm-title { margin: 0; font-size: 16px; font-weight: 600; }
 .sm-muted { color: var(--sm-text-muted); margin: 0; }
-.sm-summary { min-height: 2.9em; margin: 0; }
+.sm-summary { min-height: 8em; margin: 0; overflow-wrap: anywhere; }
 .sm-notes { min-height: 4.35em; }
 .sm-sides { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sm-space-3); }
 @media (max-width: 40rem) { .sm-sides { grid-template-columns: 1fr; } }
-.sm-card { border: 1px solid var(--sm-border); border-radius: 10px; padding: var(--sm-space-3); background: var(--sm-surface-raised); }
-.sm-card h3 { margin: 0 0 var(--sm-space-2); font-size: 14px; font-weight: 600; }
-.sm-current h3 { color: var(--sm-current); }
-.sm-incoming h3 { color: var(--sm-incoming); }
-.sm-base h3 { color: var(--sm-base); }
-pre { margin: 0; white-space: pre-wrap; font: 13px/1.4 ui-monospace, "Cascadia Code", monospace; }
-button { min-height: 32px; margin-right: var(--sm-space-2); border: 1px solid var(--sm-border); border-radius: 6px; background: var(--sm-surface-raised); color: var(--sm-text); padding: 4px 12px; }
+.sm-card { min-width: 0; border: 1px solid var(--sm-border); border-radius: 10px; padding: var(--sm-space-3); background: var(--sm-surface-raised); }
+.sm-card h2 { margin: 0 0 var(--sm-space-2); font-size: 14px; font-weight: 600; }
+.sm-current h2 { color: var(--sm-current); }
+.sm-incoming h2 { color: var(--sm-incoming); }
+.sm-base h2 { color: var(--sm-base); }
+pre { margin: 0; max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.4 ui-monospace, "Cascadia Code", monospace; }
+.sm-actions { display: flex; flex-wrap: wrap; }
+button { box-sizing: border-box; max-width: 100%; min-height: 32px; margin-right: var(--sm-space-2); border: 1px solid var(--sm-border); border-radius: 6px; background: var(--sm-surface-raised); color: var(--sm-text); padding: 4px 12px; overflow-wrap: anywhere; }
 button.sm-primary { background: var(--sm-accent); color: var(--sm-surface); border-color: var(--sm-accent); }
 .sm-danger { color: var(--sm-danger); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

@@ -36,6 +36,18 @@
       {
         "command": "smartmerge.explain",
         "title": "Explain the recommendation"
+      },
+      {
+        "command": "smartmerge.nextConflict",
+        "title": "Show the next conflict"
+      },
+      {
+        "command": "smartmerge.previousConflict",
+        "title": "Show the previous conflict"
+      },
+      {
+        "command": "smartmerge.currentConflict",
+        "title": "Show the selected conflict"
       }
     ],
     "keybindings": [
@@ -47,6 +59,16 @@
       {
         "command": "smartmerge.explain",
         "key": "alt+e",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "smartmerge.nextConflict",
+        "key": "alt+n",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "smartmerge.previousConflict",
+        "key": "alt+p",
         "when": "editorTextFocus"
       }
     ]
@@ -61,8 +83,10 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -b",
-    "test": "vitest run --config ../../../vitest.config.ts"
+    "build": "tsc -b && node dist/esbuild.js",
+    "test": "vitest run --config ../../../vitest.config.ts",
+    "test:host": "pnpm run build && node dist/pack.js && node dist/host/run.js",
+    "pack:vsix": "pnpm run build && node dist/pack.js --vsix"
   },
   "dependencies": {
     "@smartmerge/daemon": "workspace:*",
@@ -71,6 +95,10 @@
   },
   "devDependencies": {
     "@types/node": "^24.19.0",
-    "@types/vscode": "1.138.0"
+    "@types/vscode": "1.138.0",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^4.0.0",
+    "esbuild": "^0.28.2",
+    "ovsx": "^1.2.0"
   }
 }

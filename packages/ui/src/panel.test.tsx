@@ -108,7 +108,7 @@ describe("panel states", () => {
       expect(html, item.name).toContain(item.text);
       expect(html, item.name).toContain("--sm-text");
       expect(html, item.name).toContain("@media (max-width: 40rem)");
-      expect(html, item.name).toContain("min-height: 2.9em");
+      expect(html, item.name).toContain("min-height: 8em");
       expect(html, item.name).not.toMatch(/\bours\b|\btheirs\b/);
     }
   });

@@ -1,9 +1,16 @@
+import { performance } from "node:perf_hooks";
 import { join, relative } from "node:path";
 import { withDaemon } from "@smartmerge/daemon";
 import { daemonScript } from "./daemon-path.js";
 import { panelModel, renderPanelDocument } from "@smartmerge/ui";
 import * as vscode from "vscode";
-import { codeLensTitle, problemEntries, statusBarText, type ProblemEntry } from "./present.js";
+import {
+  codeLensTitle,
+  problemEntries,
+  statusBarText,
+  stepConflictIndex,
+  type ProblemEntry,
+} from "./present.js";
 import { acceptFile, undoFile } from "./resolve.js";
 
 interface PanelMessage {
@@ -13,36 +20,40 @@ interface PanelMessage {
   path?: string | null;
 }
 
-/** Editor entry. It renders daemon state and forwards commands. */
+let panelRef: vscode.WebviewPanel | undefined;
+let selectedIndex = 0;
+let selectedPath: string | null = null;
+
+/** Editor entry. It renders daemon state and forwards commands. The daemon starts on the first command. */
 export function activate(context: vscode.ExtensionContext): void {
+  const started = performance.now();
   const bar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   const problems = vscode.languages.createDiagnosticCollection("smartmerge");
   bar.command = "smartmerge.openPanel";
+  bar.text = "SmartMergeResolver";
   bar.show();
   context.subscriptions.push(
     bar,
     problems,
-    vscode.commands.registerCommand("smartmerge.refresh", () => {
-      void refresh(bar, problems);
-    }),
-    vscode.commands.registerCommand("smartmerge.openPanel", () => {
-      void openPanel();
-    }),
-    vscode.commands.registerCommand(
-      "smartmerge.acceptFile",
-      (filePath?: string, hunkId?: string) => {
-        void accept(filePath, hunkId === undefined ? undefined : { hunkId });
-      },
+    vscode.commands.registerCommand("smartmerge.refresh", () => refresh(bar, problems)),
+    vscode.commands.registerCommand("smartmerge.openPanel", () => openPanel(0)),
+    vscode.commands.registerCommand("smartmerge.nextConflict", () => openPanel(1)),
+    vscode.commands.registerCommand("smartmerge.previousConflict", () => openPanel(-1)),
+    vscode.commands.registerCommand("smartmerge.currentConflict", () => selectedPath),
+    vscode.commands.registerCommand("smartmerge.acceptFile", (filePath?: string, hunkId?: string) =>
+      accept(filePath, hunkId === undefined ? undefined : { hunkId }),
     ),
-    vscode.commands.registerCommand("smartmerge.undo", () => {
-      void undo();
-    }),
-    vscode.commands.registerCommand("smartmerge.explain", () => {
-      void openPanel();
-    }),
+    vscode.commands.registerCommand("smartmerge.undo", () => undo()),
+    vscode.commands.registerCommand("smartmerge.explain", () => openPanel(0)),
     vscode.languages.registerCodeLensProvider({ scheme: "file" }, { provideCodeLenses }),
+    vscode.workspace.onDidOpenTextDocument((document) => {
+      if (document.uri.scheme === "file" && document.getText().includes("<<<<<<<")) {
+        void refresh(bar, problems);
+      }
+    }),
   );
-  void refresh(bar, problems);
+  const mark = globalThis as { smartmergeActivationMs?: number };
+  mark.smartmergeActivationMs = performance.now() - started;
 }
 
 export function deactivate(): void {
@@ -85,16 +96,9 @@ async function refresh(
   }
 }
 
-async function openPanel(): Promise<void> {
+async function openPanel(delta: number): Promise<string | null> {
   const root = repoRoot();
-  const panel = vscode.window.createWebviewPanel(
-    "smartmerge",
-    "SmartMergeResolver",
-    vscode.ViewColumn.Beside,
-    {
-      enableScripts: true,
-    },
-  );
+  const panel = ensurePanel();
   if (!root) {
     panel.webview.html = renderPanelDocument(
       panelModel({
@@ -109,7 +113,8 @@ async function openPanel(): Promise<void> {
         selectedIndex: 0,
       }),
     );
-    return;
+    selectedPath = null;
+    return null;
   }
   panel.webview.html = renderPanelDocument(
     panelModel({
@@ -121,20 +126,9 @@ async function openPanel(): Promise<void> {
       offline: true,
       undoAvailable: false,
       session: null,
-      selectedIndex: 0,
+      selectedIndex,
     }),
   );
-  panel.webview.onDidReceiveMessage((message: PanelMessage) => {
-    if (message.action === "undo") {
-      void undo();
-      return;
-    }
-    if (message.action !== "accept" && message.action !== "alternative") return;
-    const choice: { hunkId?: string; candidateId?: string } = {};
-    if (message.hunkId) choice.hunkId = message.hunkId;
-    if (message.candidateId) choice.candidateId = message.candidateId;
-    void accept(message.path ?? undefined, choice);
-  });
   try {
     await withDaemon(
       root,
@@ -148,6 +142,9 @@ async function openPanel(): Promise<void> {
         for (const entry of session.files) {
           entry.proposals = await client.propose(session.sessionId, entry.file.path);
         }
+        const paths = hunkPaths(session);
+        selectedIndex = stepConflictIndex(selectedIndex, delta, paths.length);
+        selectedPath = paths[selectedIndex] ?? null;
         panel.webview.html = renderPanelDocument(
           panelModel({
             connected: true,
@@ -158,7 +155,7 @@ async function openPanel(): Promise<void> {
             offline: true,
             undoAvailable: false,
             session,
-            selectedIndex: 0,
+            selectedIndex,
           }),
         );
       },
@@ -176,10 +173,12 @@ async function openPanel(): Promise<void> {
         offline: true,
         undoAvailable: false,
         session: null,
-        selectedIndex: 0,
+        selectedIndex,
       }),
     );
+    return selectedPath;
   }
+  return selectedPath;
 }
 
 async function accept(
@@ -273,6 +272,44 @@ function severity(level: ProblemEntry["severity"]): vscode.DiagnosticSeverity {
   if (level === "error") return vscode.DiagnosticSeverity.Error;
   if (level === "warning") return vscode.DiagnosticSeverity.Warning;
   return vscode.DiagnosticSeverity.Information;
+}
+
+function ensurePanel(): vscode.WebviewPanel {
+  if (panelRef) {
+    panelRef.reveal(vscode.ViewColumn.Beside);
+    return panelRef;
+  }
+  const panel = vscode.window.createWebviewPanel(
+    "smartmerge",
+    "SmartMergeResolver",
+    vscode.ViewColumn.Beside,
+    { enableScripts: true },
+  );
+  const messages = panel.webview.onDidReceiveMessage((message: PanelMessage) => {
+    if (message.action === "undo") {
+      void undo();
+      return;
+    }
+    if (message.action !== "accept" && message.action !== "alternative") return;
+    const choice: { hunkId?: string; candidateId?: string } = {};
+    if (message.hunkId) choice.hunkId = message.hunkId;
+    if (message.candidateId) choice.candidateId = message.candidateId;
+    void accept(message.path ?? undefined, choice);
+  });
+  panel.onDidDispose(() => {
+    messages.dispose();
+    panelRef = undefined;
+  });
+  panelRef = panel;
+  return panel;
+}
+
+function hunkPaths(session: {
+  files: readonly { file: { path: string; hunks: readonly unknown[] } }[];
+}): string[] {
+  return session.files.flatMap((entry) =>
+    Array.from({ length: entry.file.hunks.length }, () => entry.file.path),
+  );
 }
 
 function repoRoot(): string | undefined {

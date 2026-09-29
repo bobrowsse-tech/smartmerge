@@ -76,6 +76,18 @@ export function acceptChoice(
  * Breakage entries for the Problems panel.
  * Pre-existing diagnostics are omitted. Passing and unknown checks add nothing.
  */
+/**
+ * Move the selected conflict by `delta` and stay inside the list.
+ * The editor uses this for the next and previous shortcuts.
+ */
+export function stepConflictIndex(index: number, delta: number, total: number): number {
+  if (total <= 0) return 0;
+  const next = index + delta;
+  if (next < 0) return 0;
+  if (next >= total) return total - 1;
+  return next;
+}
+
 export function problemEntries(proposals: readonly ResolutionProposal[]): ProblemEntry[] {
   const entries: ProblemEntry[] = [];
   for (const proposal of proposals) {

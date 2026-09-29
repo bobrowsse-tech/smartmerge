@@ -17,20 +17,22 @@ export function MergePanel({ model }: { model: PanelModel }): ReactElement {
       <header className="sm-header">
         <h1 className="sm-title">{view.title}</h1>
         <p>{view.headline}</p>
-        <p className="sm-summary">{view.summary}</p>
+        <p className="sm-summary" role="status" aria-label={view.summary}>
+          {view.summary}
+        </p>
       </header>
       <div className="sm-intent sm-sides">
         <article className="sm-card sm-current">
-          <h3>{view.currentLabel}</h3>
+          <h2>{view.currentLabel}</h2>
           <p className="sm-muted">{view.currentSubject}</p>
           <pre>{view.currentText}</pre>
         </article>
         <article className="sm-card sm-base">
-          <h3>Base</h3>
+          <h2>Base</h2>
           <pre>{view.baseText}</pre>
         </article>
         <article className="sm-card sm-incoming">
-          <h3>{view.incomingLabel}</h3>
+          <h2>{view.incomingLabel}</h2>
           <p className="sm-muted">{view.incomingSubject}</p>
           <pre>{view.incomingText}</pre>
         </article>
