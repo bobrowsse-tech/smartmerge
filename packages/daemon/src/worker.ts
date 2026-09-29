@@ -1,5 +1,10 @@
 import { parentPort } from "node:worker_threads";
-import { initParsers, isStructuralLanguage, proposeForFile } from "@smartmerge/core";
+import {
+  initParsers,
+  isStructuralLanguage,
+  proposeForFile,
+  verifyResolution,
+} from "@smartmerge/core";
 import type { WorkerRequest } from "./jobs.js";
 
 let ready: Promise<void> | null = null;
@@ -15,6 +20,29 @@ const cancelled = new Set<string>();
 parentPort?.on("message", (message: WorkerRequest) => {
   if (message.kind === "cancel") {
     cancelled.add(message.jobId);
+    return;
+  }
+  if (message.kind === "verify") {
+    const finishVerify = (): void => {
+      if (cancelled.delete(message.jobId)) return;
+      try {
+        parentPort?.postMessage({
+          kind: "verified",
+          jobId: message.jobId,
+          result: verifyResolution({
+            path: message.path,
+            languageId: message.languageId,
+            result: message.result,
+            current: message.current,
+            incoming: message.incoming,
+          }),
+        });
+      } catch (error) {
+        const text = error instanceof Error ? error.message : "Worker failed";
+        parentPort?.postMessage({ kind: "error", jobId: message.jobId, message: text });
+      }
+    };
+    void ensureParsers().then(finishVerify);
     return;
   }
   const finish = (): void => {

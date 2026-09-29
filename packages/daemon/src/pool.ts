@@ -1,8 +1,8 @@
 import { availableParallelism } from "node:os";
 import { randomUUID } from "node:crypto";
 import { Worker } from "node:worker_threads";
-import type { ResolutionProposal } from "@smartmerge/protocol";
-import { isWorkerResponse, type ProposeJob, type WorkerRequest } from "./jobs.js";
+import type { ResolutionProposal, VerifyResult } from "@smartmerge/protocol";
+import { isWorkerResponse, type ProposeJob, type VerifyJob, type WorkerRequest } from "./jobs.js";
 
 /** Raised when an {@link AbortSignal} cancels a pool job. */
 export class CancelledError extends Error {
@@ -28,6 +28,13 @@ interface Pending {
   onAbort: () => void;
 }
 
+interface VerifyPending {
+  signal: AbortSignal;
+  resolve: (result: VerifyResult) => void;
+  reject: (error: Error) => void;
+  onAbort: () => void;
+}
+
 /**
  * Lazy worker pool. Jobs are structured-cloned to a worker and can be cancelled
  * with an {@link AbortSignal}. A result that arrives after cancellation is ignored.
@@ -35,6 +42,7 @@ interface Pending {
 export class WorkerPool {
   private readonly workers: Worker[] = [];
   private readonly pending = new Map<string, Pending>();
+  private readonly pendingVerify = new Map<string, VerifyPending>();
   private readonly jobsByWorker = new Map<Worker, Set<string>>();
   private cursor = 0;
   private stopped = false;
@@ -74,10 +82,37 @@ export class WorkerPool {
     });
   }
 
+  /** Check a resolution in a worker. This does not write the file. */
+  verify(job: Omit<VerifyJob, "jobId" | "kind">, signal: AbortSignal): Promise<VerifyResult> {
+    if (this.stopped) return Promise.reject(new Error("Worker pool is stopped"));
+    if (signal.aborted) return Promise.reject(new CancelledError());
+    const jobId = randomUUID();
+    const worker = this.nextWorker();
+    return new Promise((resolve, reject) => {
+      const onAbort = (): void => {
+        const current = this.pendingVerify.get(jobId);
+        if (!current) return;
+        this.pendingVerify.delete(jobId);
+        this.jobsByWorker.get(worker)?.delete(jobId);
+        worker.postMessage({ kind: "cancel", jobId } satisfies WorkerRequest);
+        current.reject(new CancelledError());
+      };
+      signal.addEventListener("abort", onAbort, { once: true });
+      this.pendingVerify.set(jobId, { signal, resolve, reject, onAbort });
+      this.jobsByWorker.get(worker)?.add(jobId);
+      const message: VerifyJob = { kind: "verify", jobId, ...job };
+      worker.postMessage(message);
+    });
+  }
+
   async stop(): Promise<void> {
     this.stopped = true;
     for (const [jobId, pending] of this.pending) {
       this.pending.delete(jobId);
+      pending.reject(new CancelledError());
+    }
+    for (const [jobId, pending] of this.pendingVerify) {
+      this.pendingVerify.delete(jobId);
       pending.reject(new CancelledError());
     }
     const workers = this.workers.splice(0);
@@ -106,6 +141,15 @@ export class WorkerPool {
 
   private onMessage(message: unknown): void {
     if (!isWorkerResponse(message)) return;
+    if (message.kind === "verified" || this.pendingVerify.has(message.jobId)) {
+      const verifying = this.pendingVerify.get(message.jobId);
+      if (!verifying) return;
+      this.pendingVerify.delete(message.jobId);
+      verifying.signal.removeEventListener("abort", verifying.onAbort);
+      if (message.kind === "error") verifying.reject(new Error(message.message));
+      else if (message.kind === "verified") verifying.resolve(message.result);
+      return;
+    }
     const pending = this.pending.get(message.jobId);
     if (!pending) return;
     this.pending.delete(message.jobId);
@@ -125,9 +169,15 @@ export class WorkerPool {
     if (!jobs) return;
     for (const jobId of jobs) {
       const pending = this.pending.get(jobId);
-      if (!pending) continue;
-      this.pending.delete(jobId);
-      pending.reject(error);
+      if (pending) {
+        this.pending.delete(jobId);
+        pending.reject(error);
+      }
+      const verifying = this.pendingVerify.get(jobId);
+      if (verifying) {
+        this.pendingVerify.delete(jobId);
+        verifying.reject(error);
+      }
     }
   }
 }
