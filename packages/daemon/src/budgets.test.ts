@@ -19,7 +19,7 @@ const script = fileURLToPath(new URL("../dist/bin.js", import.meta.url));
 const roots: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(roots.splice(0).map((root) => removeRoot(root)));
 });
 
 describe("speed budgets", () => {
@@ -87,6 +87,11 @@ describe("speed budgets", () => {
       stdio: ["pipe", "pipe", "ignore"],
       windowsHide: true,
     });
+    const exited = new Promise<void>((resolve) => {
+      child.once("exit", () => {
+        resolve();
+      });
+    });
     const connection = createMessageConnection(
       new StreamMessageReader(child.stdout),
       new StreamMessageWriter(child.stdin),
@@ -99,10 +104,34 @@ describe("speed budgets", () => {
       expect(await residentMb(child.pid)).toBeLessThan(150);
       await connection.sendRequest(shutdownRequest);
     } finally {
-      child.kill();
+      if (child.exitCode === null && child.signalCode === null) child.kill();
+      await Promise.race([
+        exited,
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, 2000);
+        }),
+      ]);
+      connection.dispose();
     }
   }, 60_000);
 });
+
+/** A temp repository can stay locked for a moment after the daemon exits. */
+async function removeRoot(root: string): Promise<void> {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      await rm(root, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      const code =
+        typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
+      if (code !== "EBUSY" && code !== "EPERM" && code !== "ENOTEMPTY") throw error;
+      await new Promise((resolve) => {
+        setTimeout(resolve, 100 * (attempt + 1));
+      });
+    }
+  }
+}
 
 /** Specification budget on Linux. Other runners get a wider allowance for process startup. */
 function limit(specMs: number, runnerMs: number): number {
