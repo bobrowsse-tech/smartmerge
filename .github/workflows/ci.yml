@@ -35,6 +35,8 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+      - name: Install the panel browser
+        run: pnpm --filter @smartmerge/ui exec playwright install --with-deps chromium
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm lint
@@ -88,3 +90,6 @@ jobs:
 
       - name: Build panel stories
         run: pnpm --filter @smartmerge/ui storybook:build
+
+      - name: Editor host test
+        run: pnpm --filter @smartmerge/vscode test:host

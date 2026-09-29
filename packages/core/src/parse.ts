@@ -1,7 +1,16 @@
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import { Language, Parser, type Node as SyntaxNode } from "web-tree-sitter";
 
 const require = createRequire(import.meta.url);
+
+/** A packaged daemon keeps grammars beside the bundle. A workspace install resolves the packages. */
+function grammar(specifier: string, fileName: string): string {
+  const beside = fileURLToPath(new URL(`./wasm/${fileName}`, import.meta.url));
+  if (existsSync(beside)) return beside;
+  return require.resolve(specifier);
+}
 
 /** A named syntax token, in source order, used to detect a pure rename. */
 export interface IdentifierSpan {
@@ -133,13 +142,17 @@ export function initParsers(): Promise<void> {
 }
 
 async function loadParsers(): Promise<void> {
-  await Parser.init();
+  const runtime = fileURLToPath(new URL("./web-tree-sitter.wasm", import.meta.url));
+  if (existsSync(runtime)) await Parser.init({ locateFile: () => runtime });
+  else await Parser.init();
   const typescript = await Language.load(
-    require.resolve("tree-sitter-typescript/tree-sitter-typescript.wasm"),
+    grammar("tree-sitter-typescript/tree-sitter-typescript.wasm", "tree-sitter-typescript.wasm"),
   );
-  const tsx = await Language.load(require.resolve("tree-sitter-typescript/tree-sitter-tsx.wasm"));
+  const tsx = await Language.load(
+    grammar("tree-sitter-typescript/tree-sitter-tsx.wasm", "tree-sitter-tsx.wasm"),
+  );
   const javascript = await Language.load(
-    require.resolve("tree-sitter-javascript/tree-sitter-javascript.wasm"),
+    grammar("tree-sitter-javascript/tree-sitter-javascript.wasm", "tree-sitter-javascript.wasm"),
   );
   languages = new Map<string, Language>([
     ["typescript", typescript],
