@@ -25,6 +25,7 @@
 - Public API documented with TSDoc.
 - No adapter contains resolution logic.
 - Changelog entry added (Changesets).
+- Before UI work is merged, review the rendered screens: the affected states, light, dark, and high contrast, and a narrow viewport. Automated tests do not replace that review.
 
 ## Roles and directives
 
