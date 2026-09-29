@@ -7,6 +7,8 @@ import type {
   ResolutionProposal,
   SessionLogEntry,
   UserAction,
+  VerifyRequest,
+  VerifyResult,
 } from "@smartmerge/protocol";
 import { RequestType, RequestType0 } from "vscode-jsonrpc/node";
 
@@ -22,6 +24,7 @@ export const proposeRequest = new RequestType<
   ResolutionProposal[],
   void
 >("resolution/propose");
+export const verifyRequest = new RequestType<VerifyRequest, VerifyResult, void>("candidate/verify");
 export const dashboardRequest = new RequestType<{ sessionId: string }, DashboardSummary, void>(
   "dashboard/get",
 );

@@ -15,7 +15,7 @@ export { initParsers, isStructuralLanguage, parseSource, parsersReady } from "./
 export { summarizeDashboard } from "./dashboard.js";
 export { proposeForFile } from "./strategies.js";
 export { mergeRegions, onlyImportChanges, renameMerge } from "./structure.js";
-export { verifyParsed } from "./verify.js";
+export { verifyParsed, verifyResolution } from "./verify.js";
 export { normalizeWhitespace } from "./whitespace.js";
 export { replaceHunk } from "./apply.js";
 export { llmPayloadPreview } from "./llm.js";

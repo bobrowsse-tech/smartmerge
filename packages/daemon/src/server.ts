@@ -10,6 +10,8 @@ import type {
   SessionLogEntry,
   SmartMergeConfig,
   UserAction,
+  VerifyRequest,
+  VerifyResult,
 } from "@smartmerge/protocol";
 import { PROTOCOL_VERSION } from "@smartmerge/protocol";
 import { buildConflict, defaultConfig, replaceHunk, summarizeDashboard } from "@smartmerge/core";
@@ -34,6 +36,7 @@ import {
   listConflictsRequest,
   proposeRequest,
   shutdownRequest,
+  verifyRequest,
 } from "./requests.js";
 
 const SERVER_VERSION = "0.0.0";
@@ -54,6 +57,7 @@ export class DaemonServer {
     connection.onRequest(proposeRequest, (params) => this.propose(params));
     connection.onRequest(dashboardRequest, (params) => this.dashboard(params));
     connection.onRequest(actRequest, (params) => this.act(params));
+    connection.onRequest(verifyRequest, (params) => this.verify(params));
     connection.onRequest(shutdownRequest, () => this.shutdown());
   }
 
@@ -144,6 +148,36 @@ export class DaemonServer {
     entry.proposals = proposals;
     entry.status = "ready";
     return proposals;
+  }
+
+  /** Check resolution text. The working tree is left unchanged. */
+  async verify(params: VerifyRequest): Promise<VerifyResult> {
+    this.requireInitialized();
+    const session = this.sessions.get(params.sessionId);
+    if (!session) {
+      throw new ResponseError(ErrorCodes.InvalidParams, `Unknown session ${params.sessionId}`);
+    }
+    if (params.resultText.length > 1_000_000) {
+      throw new ResponseError(ErrorCodes.InvalidParams, "Result text is too large.");
+    }
+    const entry = session.files.find((item) => item.file.path === params.path);
+    if (!entry) {
+      throw new ResponseError(ErrorCodes.InvalidParams, `No conflicted file at ${params.path}`);
+    }
+    const hunk = entry.file.hunks.find((item) => item.id === params.hunkId);
+    if (!hunk) {
+      throw new ResponseError(ErrorCodes.InvalidParams, `No hunk ${params.hunkId}`);
+    }
+    return this.pool.verify(
+      {
+        path: params.path,
+        languageId: entry.file.languageId,
+        result: params.resultText,
+        current: hunk.current,
+        incoming: hunk.incoming,
+      },
+      new AbortController().signal,
+    );
   }
 
   async act(params: {

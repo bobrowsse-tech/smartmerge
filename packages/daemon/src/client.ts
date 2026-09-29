@@ -10,6 +10,8 @@ import type {
   ResolutionProposal,
   SessionLogEntry,
   UserAction,
+  VerifyRequest,
+  VerifyResult,
 } from "@smartmerge/protocol";
 import {
   createMessageConnection,
@@ -23,6 +25,7 @@ import {
   dashboardRequest,
   proposeRequest,
   shutdownRequest,
+  verifyRequest,
 } from "./requests.js";
 
 /** Speak JSON-RPC to a `smartmerged --stdio` child process. */
@@ -60,6 +63,11 @@ export class DaemonClient {
 
   propose(sessionId: string, path: string): Promise<ResolutionProposal[]> {
     return this.connection.sendRequest(proposeRequest, { sessionId, path });
+  }
+
+  /** Check resolution text for one hunk. This does not write the file. */
+  verify(params: VerifyRequest): Promise<VerifyResult> {
+    return this.connection.sendRequest(verifyRequest, params);
   }
 
   /** Rows for the merge dashboard. Propose each file first when recommendations are needed. */
