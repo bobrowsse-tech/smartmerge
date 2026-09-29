@@ -32,6 +32,22 @@
       {
         "command": "smartmerge.undo",
         "title": "Undo the last resolution"
+      },
+      {
+        "command": "smartmerge.explain",
+        "title": "Explain the recommendation"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "smartmerge.acceptFile",
+        "key": "alt+a",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "smartmerge.explain",
+        "key": "alt+e",
+        "when": "editorTextFocus"
       }
     ]
   },

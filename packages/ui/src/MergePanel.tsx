@@ -17,7 +17,7 @@ export function MergePanel({ model }: { model: PanelModel }): ReactElement {
       <header className="sm-header">
         <h1 className="sm-title">{view.title}</h1>
         <p>{view.headline}</p>
-        <p className="sm-muted">{view.summary}</p>
+        <p className="sm-summary">{view.summary}</p>
       </header>
       <div className="sm-intent sm-sides">
         <article className="sm-card sm-current">
@@ -38,11 +38,13 @@ export function MergePanel({ model }: { model: PanelModel }): ReactElement {
       <div className="sm-result">
         <h2 className="sm-title">Result</h2>
         <pre>{view.result}</pre>
-        {view.notes.map((note) => (
-          <p key={note} className={view.hazardous ? "sm-danger" : "sm-muted"}>
-            {note}
-          </p>
-        ))}
+        <div className="sm-notes">
+          {view.notes.map((note) => (
+            <p key={note} className={view.hazardous ? "sm-danger" : "sm-muted"}>
+              {note}
+            </p>
+          ))}
+        </div>
       </div>
       <div className="sm-actions">
         {view.acceptCandidateId ? (

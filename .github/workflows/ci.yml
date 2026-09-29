@@ -85,3 +85,6 @@ jobs:
             git log -1 --format=%B > "$RUNNER_TEMP/review-text/commit.txt"
           fi
           SMARTMERGE_FORBIDDEN_NAMES_FILE="$RUNNER_TEMP/forbidden-names.json" pnpm check:public . "$RUNNER_TEMP/review-text"
+
+      - name: Build panel stories
+        run: pnpm --filter @smartmerge/ui storybook:build
