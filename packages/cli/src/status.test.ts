@@ -40,6 +40,23 @@ describe("smart-merge status", () => {
     expect(applied).toContain("current");
     await undoApply(root);
     expect(await readFile(join(root, "file.txt"))).toEqual(before);
+    await expect(undoApply(root)).rejects.toThrow(/Nothing to undo/);
+  });
+
+  it("does not write when automatic apply is requested and left off", async () => {
+    const root = await conflictRepo();
+    const before = await readFile(join(root, "file.txt"));
+    await withDaemon(root, async (client) => {
+      await client.initialize(root);
+      const session = await client.listConflicts(root);
+      await client.propose(session.sessionId, "file.txt");
+      const result = await client.act(session.sessionId, {
+        type: "applyAllSafe",
+        minBand: "certain",
+      });
+      expect(result.log).toEqual([]);
+    });
+    expect(await readFile(join(root, "file.txt"))).toEqual(before);
   });
 
   it("reports an empty repository as having no conflicts", async () => {

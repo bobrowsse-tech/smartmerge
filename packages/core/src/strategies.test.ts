@@ -86,6 +86,16 @@ describe("deterministic strategies", () => {
     expect(proposals[0]?.recommended).toBeNull();
   });
 
+  it("treats a CRLF-only difference as whitespace and ignores indentation changes", () => {
+    const crlf = proposeForFile(file({ base: "value", current: "value\r\n", incoming: "value\n" }));
+    expect(crlf[0]?.recommended).toBe("hunk:1:whitespace-format");
+    const indented = proposeForFile(
+      file({ base: "old", current: "value", incoming: "  value" }),
+      new Set(["hunk:1"]),
+    );
+    expect(indented[0]?.recommended).toBeNull();
+  });
+
   it("recommends a normalized result when only trailing whitespace differs", () => {
     const proposals = proposeForFile(
       file({ base: "value", current: "value ", incoming: "value\t" }),
@@ -124,6 +134,29 @@ describe("replaceHunk", () => {
     const text = "before\n<<<<<<< HEAD\nalpha\n=======\nbeta\n>>>>>>> topic\nafter\n";
     const next = replaceHunk(text, { startLine: 2, endLine: 6 }, "alpha");
     expect(next).toBe("before\nalpha\nafter\n");
+  });
+
+  it("keeps CRLF newlines in the rest of the file", () => {
+    const text = "before\r\n<<<<<<< HEAD\r\nalpha\r\n=======\r\nbeta\r\n>>>>>>> topic\r\nafter\r\n";
+    const next = replaceHunk(text, { startLine: 2, endLine: 6 }, "alpha");
+    expect(next).toBe("before\r\nalpha\r\nafter\r\n");
+  });
+
+  it("deletes the marker block when the replacement is empty", () => {
+    const text = "before\n<<<<<<< HEAD\nalpha\n=======\nbeta\n>>>>>>> topic\nafter\n";
+    expect(replaceHunk(text, { startLine: 2, endLine: 6 }, "")).toBe("before\nafter\n");
+  });
+
+  it("rejects a range that does not fall inside the file", () => {
+    expect(() => replaceHunk("only\n", { startLine: 2, endLine: 4 }, "x")).toThrow(RangeError);
+  });
+
+  it("applies a later hunk before an earlier one without shifting the first range", () => {
+    const text =
+      "<<<<<<< HEAD\na\n=======\nb\n>>>>>>> t\nmid\n<<<<<<< HEAD\nc\n=======\nd\n>>>>>>> t\n";
+    const bottom = replaceHunk(text, { startLine: 7, endLine: 11 }, "c");
+    const both = replaceHunk(bottom, { startLine: 1, endLine: 5 }, "a");
+    expect(both).toBe("a\nmid\nc\n");
   });
 });
 

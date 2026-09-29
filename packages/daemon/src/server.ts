@@ -7,6 +7,7 @@ import type {
   InitializeResult,
   ResolutionProposal,
   SessionLogEntry,
+  SmartMergeConfig,
   UserAction,
 } from "@smartmerge/protocol";
 import { PROTOCOL_VERSION } from "@smartmerge/protocol";
@@ -18,7 +19,6 @@ import {
   listUnmerged,
   readOperation,
   readSessionLog,
-  readWorkingBytes,
   restoreBackup,
   writeAtomic,
 } from "@smartmerge/git";
@@ -40,6 +40,7 @@ const SERVER_VERSION = "0.0.0";
  */
 export class DaemonServer {
   private initialized = false;
+  private config: SmartMergeConfig = defaultConfig();
   private readonly sessions = new Map<string, ConflictSession>();
   private readonly knownBases = new Map<string, readonly string[]>();
   private readonly pool = new WorkerPool(workerPoolSize(), new URL("./worker.js", import.meta.url));
@@ -63,11 +64,12 @@ export class DaemonServer {
       throw new ResponseError(ErrorCodes.InvalidParams, "repoRoot is required");
     }
     this.initialized = true;
+    this.config = defaultConfig();
     return {
       serverVersion: SERVER_VERSION,
       protocolVersion: PROTOCOL_VERSION,
       supportedLanguages: [],
-      config: defaultConfig(),
+      config: this.config,
     };
   }
 
@@ -142,6 +144,8 @@ export class DaemonServer {
       return { log: [entry], session };
     }
     if (params.action.type === "applyAllSafe") {
+      // Automatic apply stays off unless the saved config explicitly enables it.
+      if (!this.config.autoApply.enabled) return { log: [], session };
       return { log: [], session };
     }
     if (params.action.type !== "accept") {
@@ -171,10 +175,9 @@ export class DaemonServer {
     if (located.candidate.hazardous && action.acceptHazardous !== true) {
       throw new ResponseError(ErrorCodes.InvalidParams, "Refusing to apply a hazardous candidate");
     }
-    const backupId = await backupWorkingFile(session.repoRoot, located.path);
-    const original = await readWorkingBytes(session.repoRoot, located.path);
+    const backup = await backupWorkingFile(session.repoRoot, located.path);
     const next = replaceHunk(
-      original.toString("utf8"),
+      backup.bytes.toString("utf8"),
       located.hunk.range,
       located.candidate.result,
     );
@@ -188,7 +191,7 @@ export class DaemonServer {
       action: "accepted",
       candidateId: action.candidateId,
       strategy: located.candidate.strategy,
-      backupId,
+      backupId: backup.id,
     };
     await appendSessionLog(session.repoRoot, entry);
     located.row.status = next.includes("<<<<<<<") ? "pending" : "resolved";
