@@ -102,7 +102,12 @@ describe("speed budgets", () => {
       await client.initialize(root, "1.0.0");
       if (child.pid === undefined) throw new Error("daemon pid is missing");
       expect(await residentMb(child.pid)).toBeLessThan(150);
-      await connection.sendRequest(shutdownRequest);
+      await Promise.race([
+        connection.sendRequest(shutdownRequest),
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, 5_000);
+        }),
+      ]);
     } finally {
       if (child.exitCode === null && child.signalCode === null) child.kill();
       await Promise.race([
@@ -145,12 +150,14 @@ async function residentMb(pid: number): Promise<number> {
     return Number(line?.split(/\s+/)[1] ?? "NaN") / 1024;
   }
   if (process.platform === "win32") {
-    const { stdout } = await execFileAsync("powershell", [
-      "-NoProfile",
-      "-Command",
-      `(Get-Process -Id ${String(pid)}).WorkingSet64 / 1MB`,
-    ]);
-    return Number(stdout.trim());
+    const { stdout } = await execFileAsync(
+      "tasklist",
+      ["/FI", `PID eq ${String(pid)}`, "/FO", "CSV", "/NH"],
+      { timeout: 10_000, windowsHide: true },
+    );
+    const match = /"([\d,]+)\s+K"\s*$/.exec(stdout.trim());
+    const kilobytes = Number(match?.[1]?.replaceAll(",", "") ?? "NaN");
+    return kilobytes / 1024;
   }
   const { stdout } = await execFileAsync("ps", ["-o", "rss=", "-p", String(pid)]);
   return Number(stdout.trim()) / 1024;
