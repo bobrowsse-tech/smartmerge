@@ -27,14 +27,27 @@ import {
 export class DaemonClient {
   constructor(private readonly connection: ReturnType<typeof createMessageConnection>) {}
 
-  initialize(repoRoot: string, protocolRange = "1.0.0"): Promise<InitializeResult> {
+  initialize(
+    repoRoot: string,
+    protocolRange = "1.0.0",
+    options?: {
+      clientName?: string;
+      clientVersion?: string;
+      workspaceTrusted?: boolean;
+      supportsWebview?: boolean;
+      supportsDiagnostics?: boolean;
+    },
+  ): Promise<InitializeResult> {
     const params: InitializeParams = {
-      clientName: "smart-merge",
-      clientVersion: "0.0.0",
+      clientName: options?.clientName ?? "smart-merge",
+      clientVersion: options?.clientVersion ?? "0.0.0",
       protocolRange,
       repoRoot,
-      workspaceTrusted: true,
-      capabilities: { supportsWebview: false, supportsDiagnostics: false },
+      workspaceTrusted: options?.workspaceTrusted ?? true,
+      capabilities: {
+        supportsWebview: options?.supportsWebview ?? false,
+        supportsDiagnostics: options?.supportsDiagnostics ?? false,
+      },
     };
     return this.connection.sendRequest(initializeRequest, params);
   }
