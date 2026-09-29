@@ -11,7 +11,7 @@ const execFileAsync = promisify(execFile);
 const roots: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(roots.splice(0).map((root) => removeRoot(root)));
 });
 
 describe("listUnmerged", () => {
@@ -102,6 +102,23 @@ async function rebaseRepo(): Promise<string> {
   await runGit(root, ["checkout", "feature"]);
   await runGit(root, ["rebase", "main"], [0, 1]);
   return root;
+}
+
+/** A temp repository can stay locked for a moment after git exits. */
+async function removeRoot(root: string): Promise<void> {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      await rm(root, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      const code =
+        typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
+      if (code !== "EBUSY" && code !== "EPERM" && code !== "ENOTEMPTY") throw error;
+      await new Promise((resolve) => {
+        setTimeout(resolve, 100 * (attempt + 1));
+      });
+    }
+  }
 }
 
 async function runGit(

@@ -15,7 +15,7 @@ const stage = join(packageRoot, ".pack");
 /**
  * Stage a self-contained editor package.
  * The workspace package name stays scoped. The staged name is the registry id.
- * Pass `--vsix` to also write an installable package.
+ * Pass `--vsix` to also write an installable pre-release package.
  */
 await rm(stage, { recursive: true, force: true });
 await mkdir(join(stage, "dist"), { recursive: true });
@@ -54,7 +54,15 @@ if (process.argv.includes("--vsix")) {
   const vsix = join(packageRoot, `smartmerge-resolver-${version}.vsix`);
   await execFileAsync(
     join(packageRoot, "node_modules", ".bin", "vsce"),
-    ["package", "--no-dependencies", "--allow-missing-repository", "--skip-license", "--out", vsix],
+    [
+      "package",
+      "--pre-release",
+      "--no-dependencies",
+      "--allow-missing-repository",
+      "--skip-license",
+      "--out",
+      vsix,
+    ],
     { cwd: stage },
   );
   process.stdout.write(`${vsix}\n`);
