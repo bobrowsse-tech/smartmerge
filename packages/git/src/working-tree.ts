@@ -38,7 +38,10 @@ export async function commitAtomic(temp: string, target: string): Promise<void> 
  * Copy the working file into `.git/smartmerge/backups/` and return the backup id.
  * The copy is the raw bytes, so undo can restore them exactly.
  */
-export async function backupWorkingFile(repoRoot: string, path: string): Promise<string> {
+export async function backupWorkingFile(
+  repoRoot: string,
+  path: string,
+): Promise<{ id: string; bytes: Buffer }> {
   const absolute = resolveInside(repoRoot, path);
   const bytes = await readFile(absolute);
   const id = randomUUID();
@@ -46,7 +49,7 @@ export async function backupWorkingFile(repoRoot: string, path: string): Promise
   const backups = resolve(gitDir, "smartmerge", "backups");
   await mkdir(backups, { recursive: true });
   await writeAtomic(resolve(backups, id), bytes);
-  return id;
+  return { id, bytes };
 }
 
 /** Restore a backup over the working file with an atomic replace. */
@@ -131,7 +134,7 @@ async function gitDirectory(repoRoot: string): Promise<string> {
 function resolveInside(root: string, path: string): string {
   const absolute = resolve(root, path);
   const fromRoot = relative(root, absolute);
-  if (fromRoot.startsWith("..") || isAbsolute(fromRoot)) {
+  if (fromRoot.length === 0 || fromRoot.startsWith("..") || isAbsolute(fromRoot)) {
     throw new Error(`Path escapes the repository: ${path}`);
   }
   return absolute;

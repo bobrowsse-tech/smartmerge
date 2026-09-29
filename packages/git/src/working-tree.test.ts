@@ -38,10 +38,18 @@ describe("atomic writes", () => {
     const target = join(root, "file.txt");
     const original = Buffer.from("alpha\nbeta\n");
     await writeFile(target, original);
-    const id = await backupWorkingFile(root, "file.txt");
+    const backup = await backupWorkingFile(root, "file.txt");
     await writeAtomic(target, Buffer.from("replaced\n"));
-    await restoreBackup(root, id, "file.txt");
+    await restoreBackup(root, backup.id, "file.txt");
     expect(await readFile(target)).toEqual(original);
+  });
+
+  it("rejects a path that leaves the repository and a backup id that is not a file name", async () => {
+    const root = await gitRepo();
+    await writeFile(join(root, "file.txt"), "alpha\n");
+    await expect(backupWorkingFile(root, "../outside.txt")).rejects.toThrow(/escapes/);
+    await expect(restoreBackup(root, "../outside", "file.txt")).rejects.toThrow(/Invalid backup/);
+    await expect(restoreBackup(root, "not-a-uuid", "file.txt")).rejects.toThrow(/Invalid backup/);
   });
 });
 
