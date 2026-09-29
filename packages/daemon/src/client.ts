@@ -1,0 +1,100 @@
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import type {
+  ConflictSession,
+  InitializeParams,
+  InitializeResult,
+  ResolutionProposal,
+} from "@smartmerge/protocol";
+import {
+  createMessageConnection,
+  StreamMessageReader,
+  StreamMessageWriter,
+} from "vscode-jsonrpc/node";
+import {
+  initializeRequest,
+  listConflictsRequest,
+  proposeRequest,
+  shutdownRequest,
+} from "./requests.js";
+
+/** Speak JSON-RPC to a `smartmerged --stdio` child process. */
+export class DaemonClient {
+  constructor(private readonly connection: ReturnType<typeof createMessageConnection>) {}
+
+  initialize(repoRoot: string, protocolRange = "1.0.0"): Promise<InitializeResult> {
+    const params: InitializeParams = {
+      clientName: "smart-merge",
+      clientVersion: "0.0.0",
+      protocolRange,
+      repoRoot,
+      workspaceTrusted: true,
+      capabilities: { supportsWebview: false, supportsDiagnostics: false },
+    };
+    return this.connection.sendRequest(initializeRequest, params);
+  }
+
+  listConflicts(repoRoot: string): Promise<ConflictSession> {
+    return this.connection.sendRequest(listConflictsRequest, { repoRoot });
+  }
+
+  propose(sessionId: string, path: string): Promise<ResolutionProposal[]> {
+    return this.connection.sendRequest(proposeRequest, { sessionId, path });
+  }
+}
+
+/** Spawn the daemon, run `task`, then shut the daemon down. */
+export async function withDaemon<T>(
+  repoRoot: string,
+  task: (client: DaemonClient) => Promise<T>,
+): Promise<T> {
+  const script = fileURLToPath(new URL("./bin.js", import.meta.url));
+  if (!existsSync(script)) {
+    throw new Error(`Daemon is not built at ${script}. Run pnpm build.`);
+  }
+  const child = spawn(process.execPath, [script, "--stdio"], {
+    cwd: repoRoot,
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+  });
+  const stderrChunks: Buffer[] = [];
+  child.stderr.on("data", (chunk: Buffer | string) => {
+    stderrChunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  });
+  const connection = createMessageConnection(
+    new StreamMessageReader(child.stdout),
+    new StreamMessageWriter(child.stdin),
+  );
+  connection.listen();
+  const exited = new Promise<void>((resolve) => {
+    child.once("exit", () => {
+      resolve();
+    });
+  });
+  try {
+    return await task(new DaemonClient(connection));
+  } catch (error) {
+    const stderr = Buffer.concat(stderrChunks).toString("utf8").trim();
+    if (stderr.length > 0 && error instanceof Error) {
+      error.message = `${error.message}\n${stderr}`;
+    }
+    throw error;
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) {
+      try {
+        await connection.sendRequest(shutdownRequest);
+      } catch {
+        // The process is stopped below whether or not shutdown was acknowledged.
+      }
+      child.kill();
+    }
+    await Promise.race([
+      exited,
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, 500);
+      }),
+    ]);
+    connection.dispose();
+  }
+}
