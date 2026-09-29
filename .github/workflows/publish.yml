@@ -80,6 +80,18 @@ jobs:
             pnpm publish -r --access public --no-git-checks
           fi
 
+      - name: Publish the editor extension
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ] || [ -z "$OVSX_PAT" ]; then
+            echo "VSCE_PAT or OVSX_PAT is not set. The editor extension was not published."
+            exit 0
+          fi
+          echo "Editor registry tokens are set. The extension package is still private, so nothing was uploaded."
+          exit 0
+
       - name: GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

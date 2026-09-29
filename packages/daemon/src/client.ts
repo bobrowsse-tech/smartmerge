@@ -75,8 +75,9 @@ export class DaemonClient {
 export async function withDaemon<T>(
   repoRoot: string,
   task: (client: DaemonClient) => Promise<T>,
+  options?: { scriptPath?: string },
 ): Promise<T> {
-  const script = fileURLToPath(new URL("./bin.js", import.meta.url));
+  const script = options?.scriptPath ?? fileURLToPath(new URL("./bin.js", import.meta.url));
   if (!existsSync(script)) {
     throw new Error(`Daemon is not built at ${script}. Run pnpm build.`);
   }

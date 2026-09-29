@@ -1,5 +1,6 @@
 import { relative } from "node:path";
 import { withDaemon } from "@smartmerge/daemon";
+import { daemonScript } from "./daemon-path.js";
 import { panelModel, renderPanelDocument } from "@smartmerge/ui";
 import * as vscode from "vscode";
 import { codeLensTitle, statusBarText } from "./present.js";
@@ -50,15 +51,19 @@ async function refresh(bar: vscode.StatusBarItem): Promise<void> {
     return;
   }
   try {
-    await withDaemon(root, async (client) => {
-      await client.initialize(root, "1.0.0", {
-        clientName: "smartmerge-editor",
-        workspaceTrusted: vscode.workspace.isTrusted,
-        supportsWebview: true,
-      });
-      const session = await client.listConflicts(root);
-      bar.text = statusBarText(session.stats.total, session.stats.autoResolvable, true);
-    });
+    await withDaemon(
+      root,
+      async (client) => {
+        await client.initialize(root, "1.0.0", {
+          clientName: "smartmerge-editor",
+          workspaceTrusted: vscode.workspace.isTrusted,
+          supportsWebview: true,
+        });
+        const session = await client.listConflicts(root);
+        bar.text = statusBarText(session.stats.total, session.stats.autoResolvable, true);
+      },
+      { scriptPath: daemonScript() },
+    );
   } catch {
     bar.text = statusBarText(0, 0, false);
   }
@@ -115,30 +120,34 @@ async function openPanel(): Promise<void> {
     void accept(message.path ?? undefined, choice);
   });
   try {
-    await withDaemon(root, async (client) => {
-      await client.initialize(root, "1.0.0", {
-        clientName: "smartmerge-editor",
-        workspaceTrusted: vscode.workspace.isTrusted,
-        supportsWebview: true,
-      });
-      const session = await client.listConflicts(root);
-      for (const entry of session.files) {
-        entry.proposals = await client.propose(session.sessionId, entry.file.path);
-      }
-      panel.webview.html = renderPanelDocument(
-        panelModel({
-          connected: true,
-          loading: false,
-          applying: false,
-          error: null,
-          llmEnabled: false,
-          offline: true,
-          undoAvailable: false,
-          session,
-          selectedIndex: 0,
-        }),
-      );
-    });
+    await withDaemon(
+      root,
+      async (client) => {
+        await client.initialize(root, "1.0.0", {
+          clientName: "smartmerge-editor",
+          workspaceTrusted: vscode.workspace.isTrusted,
+          supportsWebview: true,
+        });
+        const session = await client.listConflicts(root);
+        for (const entry of session.files) {
+          entry.proposals = await client.propose(session.sessionId, entry.file.path);
+        }
+        panel.webview.html = renderPanelDocument(
+          panelModel({
+            connected: true,
+            loading: false,
+            applying: false,
+            error: null,
+            llmEnabled: false,
+            offline: true,
+            undoAvailable: false,
+            session,
+            selectedIndex: 0,
+          }),
+        );
+      },
+      { scriptPath: daemonScript() },
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "The daemon failed.";
     panel.webview.html = renderPanelDocument(
@@ -186,26 +195,30 @@ async function provideCodeLenses(document: vscode.TextDocument): Promise<vscode.
   const root = repoRoot();
   if (!root || document.uri.scheme !== "file") return [];
   const path = relative(root, document.uri.fsPath).replaceAll("\\", "/");
-  return withDaemon(root, async (client) => {
-    await client.initialize(root, "1.0.0", {
-      clientName: "smartmerge-editor",
-      workspaceTrusted: vscode.workspace.isTrusted,
-      supportsWebview: true,
-    });
-    const session = await client.listConflicts(root);
-    const entry = session.files.find((item) => item.file.path === path);
-    if (!entry) return [];
-    const proposals = await client.propose(session.sessionId, path);
-    return entry.file.hunks.map((hunk) => {
-      const proposal = proposals.find((item) => item.hunkId === hunk.id);
-      const line = Math.max(0, hunk.range.startLine - 1);
-      return new vscode.CodeLens(new vscode.Range(line, 0, line, 0), {
-        title: codeLensTitle(proposal),
-        command: "smartmerge.acceptFile",
-        arguments: [path, hunk.id],
+  return withDaemon(
+    root,
+    async (client) => {
+      await client.initialize(root, "1.0.0", {
+        clientName: "smartmerge-editor",
+        workspaceTrusted: vscode.workspace.isTrusted,
+        supportsWebview: true,
       });
-    });
-  });
+      const session = await client.listConflicts(root);
+      const entry = session.files.find((item) => item.file.path === path);
+      if (!entry) return [];
+      const proposals = await client.propose(session.sessionId, path);
+      return entry.file.hunks.map((hunk) => {
+        const proposal = proposals.find((item) => item.hunkId === hunk.id);
+        const line = Math.max(0, hunk.range.startLine - 1);
+        return new vscode.CodeLens(new vscode.Range(line, 0, line, 0), {
+          title: codeLensTitle(proposal),
+          command: "smartmerge.acceptFile",
+          arguments: [path, hunk.id],
+        });
+      });
+    },
+    { scriptPath: daemonScript() },
+  );
 }
 
 function repoRoot(): string | undefined {
