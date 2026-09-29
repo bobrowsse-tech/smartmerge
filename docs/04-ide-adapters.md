@@ -43,7 +43,7 @@ No conflict logic, ever.
 
 ## JetBrains adapter (P1)
 
-- Kotlin plugin; use the platform's `MergeTool`/`DiffRequestFactory` extension points to add a "SmartMerge" resolver action to the conflict dialog.
+- Kotlin plugin; use the platform's `MergeTool`/`DiffRequestFactory` extension points to add a "SmartMergeResolver" resolver action to the conflict dialog.
 - Hosts shared UI in JCEF; bridge JS↔Kotlin via `JBCefJSQuery` mapped to protocol messages.
 - Daemon is launched as external process using bundled Node or system Node (detect; offer download).
 - Keep Kotlin under about 1.5k lines; generated protocol bindings from `06-protocol.types.ts` (via JSON Schema → Kotlin codegen).

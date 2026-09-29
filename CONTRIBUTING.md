@@ -1,6 +1,6 @@
 # Contributing
 
-SmartMerge is public so people can read, clone, and fork the source. Changing this repository is limited to maintainers.
+SmartMergeResolver is public so people can read, clone, and fork the source. Changing this repository is limited to maintainers.
 
 ## Who can change `main`
 

@@ -1,4 +1,4 @@
-# AGENTS.md — Rules for every agent building SmartMerge
+# AGENTS.md — Rules for every agent building SmartMergeResolver
 
 ## Non-negotiable rules
 

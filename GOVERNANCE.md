@@ -1,6 +1,6 @@
 # Governance
 
-SmartMerge is maintained by the repository admins. Today that is the GitHub account that owns the repository.
+SmartMergeResolver is maintained by the repository admins. Today that is the GitHub account that owns the repository.
 
 ## What is public
 

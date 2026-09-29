@@ -1,6 +1,6 @@
-# SmartMerge
+# SmartMergeResolver
 
-SmartMerge is being built as a free, IDE-agnostic merge conflict resolver. It explains each conflict, proposes a resolution, and checks the merged result before you apply it.
+SmartMergeResolver is being built as a free, IDE-agnostic merge conflict resolver. It explains each conflict, proposes a resolution, and checks the merged result before you apply it.
 
 > **Status:** walking skeleton. `smart-merge status` lists conflicted files in a git repository. Specifications live in [`docs/`](docs/README.md). Nothing here is released yet, and all performance and accuracy figures in the docs are targets, not measurements.
 >
