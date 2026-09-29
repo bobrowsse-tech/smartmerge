@@ -97,6 +97,7 @@ export const panelCss = `
   }
 }
 body { margin: 0; background: var(--sm-surface); color: var(--sm-text); }
+[data-theme] { background: var(--sm-surface); color: var(--sm-text); min-height: 100vh; }
 .sm-panel { box-sizing: border-box; display: grid; gap: var(--sm-space-6); padding: var(--sm-space-4); width: min(100%, 72ch); max-width: 100%; }
 .sm-header, .sm-intent, .sm-result, .sm-actions { display: grid; gap: var(--sm-space-2); min-width: 0; }
 .sm-title { margin: 0; font-size: 16px; font-weight: 600; }
