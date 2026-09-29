@@ -1,6 +1,12 @@
 import type { ResolutionProposal } from "@smartmerge/protocol";
 import { describe, expect, it } from "vitest";
-import { acceptChoice, acceptRecommended, codeLensTitle, statusBarText } from "./present.js";
+import {
+  acceptChoice,
+  acceptRecommended,
+  codeLensTitle,
+  problemEntries,
+  statusBarText,
+} from "./present.js";
 
 const proposal: ResolutionProposal = {
   hunkId: "hunk:1",
@@ -59,5 +65,55 @@ describe("editor presentation", () => {
       acceptHazardous: true,
     });
     expect(acceptChoice([proposal], { hunkId: "missing" })).toBeNull();
+  });
+
+  it("sends only new failed diagnostics to the problems list", () => {
+    const current = proposal.candidates[0];
+    if (!current) throw new Error("expected a candidate");
+    const broken: ResolutionProposal = {
+      ...proposal,
+      candidates: [
+        {
+          ...current,
+          checks: [
+            {
+              kind: "syntax",
+              status: "fail",
+              durationMs: 1,
+              diagnostics: [
+                {
+                  severity: "error",
+                  message: "Missing closing brace.",
+                  path: "src/session.ts",
+                  range: { startLine: 4, endLine: 4 },
+                  source: "smartmerge",
+                  preExisting: false,
+                  code: "syntax",
+                },
+                {
+                  severity: "warning",
+                  message: "Already on one side.",
+                  path: "src/session.ts",
+                  range: { startLine: 1, endLine: 1 },
+                  source: "smartmerge",
+                  preExisting: true,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(problemEntries([broken])).toEqual([
+      {
+        path: "src/session.ts",
+        message: "Missing closing brace.",
+        severity: "error",
+        startLine: 4,
+        endLine: 4,
+        code: "syntax",
+      },
+    ]);
+    expect(problemEntries([proposal])).toEqual([]);
   });
 });

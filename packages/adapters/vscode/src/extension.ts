@@ -1,9 +1,9 @@
-import { relative } from "node:path";
+import { join, relative } from "node:path";
 import { withDaemon } from "@smartmerge/daemon";
 import { daemonScript } from "./daemon-path.js";
 import { panelModel, renderPanelDocument } from "@smartmerge/ui";
 import * as vscode from "vscode";
-import { codeLensTitle, statusBarText } from "./present.js";
+import { codeLensTitle, problemEntries, statusBarText, type ProblemEntry } from "./present.js";
 import { acceptFile, undoFile } from "./resolve.js";
 
 interface PanelMessage {
@@ -16,12 +16,14 @@ interface PanelMessage {
 /** Editor entry. It renders daemon state and forwards commands. */
 export function activate(context: vscode.ExtensionContext): void {
   const bar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+  const problems = vscode.languages.createDiagnosticCollection("smartmerge");
   bar.command = "smartmerge.openPanel";
   bar.show();
   context.subscriptions.push(
     bar,
+    problems,
     vscode.commands.registerCommand("smartmerge.refresh", () => {
-      void refresh(bar);
+      void refresh(bar, problems);
     }),
     vscode.commands.registerCommand("smartmerge.openPanel", () => {
       void openPanel();
@@ -35,19 +37,26 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("smartmerge.undo", () => {
       void undo();
     }),
+    vscode.commands.registerCommand("smartmerge.explain", () => {
+      void openPanel();
+    }),
     vscode.languages.registerCodeLensProvider({ scheme: "file" }, { provideCodeLenses }),
   );
-  void refresh(bar);
+  void refresh(bar, problems);
 }
 
 export function deactivate(): void {
   /* The daemon is started per command and does not need a shutdown hook. */
 }
 
-async function refresh(bar: vscode.StatusBarItem): Promise<void> {
+async function refresh(
+  bar: vscode.StatusBarItem,
+  problems: vscode.DiagnosticCollection,
+): Promise<void> {
   const root = repoRoot();
   if (!root) {
     bar.text = statusBarText(0, 0, false);
+    problems.clear();
     return;
   }
   try {
@@ -58,14 +67,21 @@ async function refresh(bar: vscode.StatusBarItem): Promise<void> {
           clientName: "smartmerge-editor",
           workspaceTrusted: vscode.workspace.isTrusted,
           supportsWebview: true,
+          supportsDiagnostics: true,
         });
         const session = await client.listConflicts(root);
         bar.text = statusBarText(session.stats.total, session.stats.autoResolvable, true);
+        problems.clear();
+        for (const entry of session.files) {
+          const proposals = await client.propose(session.sessionId, entry.file.path);
+          publishProblems(problems, root, problemEntries(proposals));
+        }
       },
       { scriptPath: daemonScript() },
     );
   } catch {
     bar.text = statusBarText(0, 0, false);
+    problems.clear();
   }
 }
 
@@ -207,18 +223,56 @@ async function provideCodeLenses(document: vscode.TextDocument): Promise<vscode.
       const entry = session.files.find((item) => item.file.path === path);
       if (!entry) return [];
       const proposals = await client.propose(session.sessionId, path);
-      return entry.file.hunks.map((hunk) => {
-        const proposal = proposals.find((item) => item.hunkId === hunk.id);
-        const line = Math.max(0, hunk.range.startLine - 1);
-        return new vscode.CodeLens(new vscode.Range(line, 0, line, 0), {
-          title: codeLensTitle(proposal),
-          command: "smartmerge.acceptFile",
-          arguments: [path, hunk.id],
-        });
-      });
+      return entry.file.hunks
+        .map((hunk) => {
+          const proposal = proposals.find((item) => item.hunkId === hunk.id);
+          const line = Math.max(0, hunk.range.startLine - 1);
+          const range = new vscode.Range(line, 0, line, 0);
+          return [
+            new vscode.CodeLens(range, {
+              title: codeLensTitle(proposal),
+              command: "smartmerge.acceptFile",
+              arguments: [path, hunk.id],
+            }),
+            new vscode.CodeLens(range, { title: "Compare", command: "smartmerge.openPanel" }),
+            new vscode.CodeLens(range, { title: "Explain", command: "smartmerge.explain" }),
+          ];
+        })
+        .flat();
     },
     { scriptPath: daemonScript() },
   );
+}
+
+function publishProblems(
+  problems: vscode.DiagnosticCollection,
+  root: string,
+  entries: readonly ProblemEntry[],
+): void {
+  const byPath = new Map<string, vscode.Diagnostic[]>();
+  for (const entry of entries) {
+    const list = byPath.get(entry.path) ?? [];
+    const start = Math.max(0, entry.startLine - 1);
+    const end = Math.max(start, entry.endLine - 1);
+    const diagnostic = new vscode.Diagnostic(
+      new vscode.Range(start, 0, end, 0),
+      entry.message,
+      severity(entry.severity),
+    );
+    diagnostic.source = "smartmerge";
+    if (entry.code !== undefined) diagnostic.code = entry.code;
+    list.push(diagnostic);
+    byPath.set(entry.path, list);
+  }
+  for (const [path, diagnostics] of byPath) {
+    problems.set(vscode.Uri.file(join(root, path)), diagnostics);
+  }
+}
+
+function severity(level: ProblemEntry["severity"]): vscode.DiagnosticSeverity {
+  if (level === "error") return vscode.DiagnosticSeverity.Error;
+  if (level === "warning") return vscode.DiagnosticSeverity.Warning;
+  return vscode.DiagnosticSeverity.Information;
 }
 
 function repoRoot(): string | undefined {

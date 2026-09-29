@@ -1,5 +1,14 @@
 import type { ResolutionProposal, UserAction } from "@smartmerge/protocol";
 
+export interface ProblemEntry {
+  path: string;
+  message: string;
+  severity: "error" | "warning" | "info";
+  startLine: number;
+  endLine: number;
+  code?: string;
+}
+
 /** Status bar text. Branch names stay in the panel; this line is a count. */
 export function statusBarText(total: number, autoResolvable: number, connected: boolean): string {
   if (!connected) return "SmartMergeResolver: daemon disconnected";
@@ -61,4 +70,32 @@ export function acceptChoice(
       ? proposals[0]
       : proposals.find((item) => item.hunkId === choice.hunkId);
   return acceptRecommended(proposal);
+}
+
+/**
+ * Breakage entries for the Problems panel.
+ * Pre-existing diagnostics are omitted. Passing and unknown checks add nothing.
+ */
+export function problemEntries(proposals: readonly ResolutionProposal[]): ProblemEntry[] {
+  const entries: ProblemEntry[] = [];
+  for (const proposal of proposals) {
+    const chosen = proposal.candidates.find((candidate) => candidate.id === proposal.recommended);
+    if (!chosen) continue;
+    for (const check of chosen.checks) {
+      if (check.status !== "fail") continue;
+      for (const diagnostic of check.diagnostics) {
+        if (diagnostic.preExisting) continue;
+        const entry: ProblemEntry = {
+          path: diagnostic.path,
+          message: diagnostic.message,
+          severity: diagnostic.severity,
+          startLine: diagnostic.range.startLine,
+          endLine: diagnostic.range.endLine,
+        };
+        if (diagnostic.code !== undefined) entry.code = diagnostic.code;
+        entries.push(entry);
+      }
+    }
+  }
+  return entries;
 }
