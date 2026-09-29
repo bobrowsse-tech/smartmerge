@@ -4,7 +4,7 @@
   "private": true,
   "description": "Editor adapter for SmartMergeResolver. It renders the shared panel and forwards actions to the daemon.",
   "license": "Apache-2.0",
-  "publisher": "smartmerge",
+  "publisher": "bobrowsse-tech",
   "displayName": "SmartMergeResolver",
   "type": "module",
   "main": "./dist/extension.js",
