@@ -15,6 +15,7 @@ import { buildConflict, defaultConfig, replaceHunk } from "@smartmerge/core";
 import {
   appendSessionLog,
   backupWorkingFile,
+  enrichLineage,
   findRepoRoot,
   listUnmerged,
   readOperation,
@@ -68,7 +69,7 @@ export class DaemonServer {
     return {
       serverVersion: SERVER_VERSION,
       protocolVersion: PROTOCOL_VERSION,
-      supportedLanguages: [],
+      supportedLanguages: ["typescript", "typescriptreact", "javascript", "javascriptreact"],
       config: this.config,
     };
   }
@@ -83,15 +84,16 @@ export class DaemonServer {
       const unmerged = await listUnmerged(repoRoot);
       const operation = unmerged.length === 0 ? null : await readOperation(repoRoot);
       const sessionId = randomUUID();
-      const files = unmerged.map((file) => {
+      const files: ConflictSession["files"] = [];
+      for (const file of unmerged) {
         const built = buildConflict(file, operation ?? emptyOperation(repoRoot));
         this.knownBases.set(baseKey(sessionId, file.path), built.knownBaseHunkIds);
-        return {
-          file: built.file,
+        files.push({
+          file: await enrichLineage(repoRoot, built.file),
           proposals: [],
           status: "pending" as const,
-        };
-      });
+        });
+      }
       const session: ConflictSession = {
         sessionId,
         repoRoot,

@@ -6,6 +6,7 @@ export {
   readOperation,
   type UnmergedFile,
 } from "./run.js";
+export { enrichLineage, parseCommitLog, readRangeCommits } from "./lineage.js";
 export {
   appendSessionLog,
   backupWorkingFile,
