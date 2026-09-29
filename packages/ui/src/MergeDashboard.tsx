@@ -9,7 +9,16 @@ import {
 } from "./dashboard.js";
 
 /** Presentational merge dashboard. It does not choose or apply a resolution. */
-export function MergeDashboard({ summary }: { summary: DashboardSummary }): ReactElement {
+export function MergeDashboard({
+  summary,
+  linkFiles = false,
+  theme,
+}: {
+  summary: DashboardSummary;
+  /** When set, each file path opens that conflict. The editor leaves this off. */
+  linkFiles?: boolean;
+  theme?: "light" | "dark" | "contrast" | undefined;
+}): ReactElement {
   const items = dashboardItems(summary);
   const visible = items.slice(0, DASHBOARD_WINDOW);
   const hunks = summary.totals.hunks;
@@ -52,7 +61,12 @@ export function MergeDashboard({ summary }: { summary: DashboardSummary }): Reac
           >
             <div className="sm-window" data-dashboard-window>
               {visible.map((item) => (
-                <DashboardItemView key={itemKey(item)} item={item} />
+                <DashboardItemView
+                  key={itemKey(item)}
+                  item={item}
+                  linkFiles={linkFiles}
+                  theme={theme}
+                />
               ))}
             </div>
           </div>
@@ -62,7 +76,15 @@ export function MergeDashboard({ summary }: { summary: DashboardSummary }): Reac
   );
 }
 
-function DashboardItemView({ item }: { item: DashboardItem }): ReactElement {
+function DashboardItemView({
+  item,
+  linkFiles,
+  theme,
+}: {
+  item: DashboardItem;
+  linkFiles: boolean;
+  theme?: "light" | "dark" | "contrast" | undefined;
+}): ReactElement {
   if (item.kind === "header") {
     return (
       <h2 className="sm-group">
@@ -78,9 +100,15 @@ function DashboardItemView({ item }: { item: DashboardItem }): ReactElement {
   const band = row.band ?? "Not scored";
   return (
     <div className="sm-file" data-dashboard-row="true">
-      <span className="sm-path" title={row.path}>
-        {row.path}
-      </span>
+      {linkFiles ? (
+        <a className="sm-path" href={fileHref(row.path, theme)} title={row.path}>
+          {row.path}
+        </a>
+      ) : (
+        <span className="sm-path" title={row.path}>
+          {row.path}
+        </span>
+      )}
       <span className="sm-band">{band}</span>
       <span className="sm-heat" aria-hidden="true">
         <span style={{ width: `${String(Math.round(row.risk * 100))}%` }} />
@@ -99,4 +127,11 @@ function DashboardItemView({ item }: { item: DashboardItem }): ReactElement {
 
 function itemKey(item: DashboardItem): string {
   return item.kind === "header" ? `header:${item.group}` : item.row.path;
+}
+
+function fileHref(path: string, theme: "light" | "dark" | "contrast" | undefined): string {
+  const params = new URLSearchParams();
+  params.set("path", path);
+  if (theme !== undefined) params.set("theme", theme);
+  return `/panel?${params.toString()}`;
 }

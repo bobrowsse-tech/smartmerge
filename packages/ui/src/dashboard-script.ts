@@ -13,6 +13,7 @@ if (payload instanceof HTMLElement && payload.textContent && scroller instanceof
   const summary = JSON.parse(payload.textContent);
   const closed = new Set();
   const rowHeight = ${String(DASHBOARD_ROW_HEIGHT)};
+  const linkFiles = document.body.dataset.fileLinks === "true";
   const labels = { blocked: "Blocked", "needs-review": "Needs review", ready: "Ready to accept" };
   const order = ["blocked", "needs-review", "ready"];
   function checkText(checks) {
@@ -64,9 +65,16 @@ if (payload instanceof HTMLElement && payload.textContent && scroller instanceof
         const row = document.createElement("div");
         row.className = "sm-file";
         row.setAttribute("data-dashboard-row", "true");
-        const path = document.createElement("span");
+        const path = linkFiles ? document.createElement("a") : document.createElement("span");
         path.className = "sm-path";
         path.textContent = item.row.path;
+        if (path instanceof HTMLAnchorElement) {
+          const params = new URLSearchParams();
+          params.set("path", item.row.path);
+          const theme = new URLSearchParams(location.search).get("theme");
+          if (theme === "light" || theme === "dark" || theme === "contrast") params.set("theme", theme);
+          path.href = "/panel?" + params.toString();
+        }
         const band = document.createElement("span");
         band.className = "sm-band";
         band.textContent = item.row.band === null ? "Not scored" : item.row.band;
