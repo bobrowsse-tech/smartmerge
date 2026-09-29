@@ -48,7 +48,7 @@ Metrics on held-out test:
 
 ## User study (pre-v1)
 
-Task-based comparison versus built-in merge tooling, 15–20 developers, 6 conflict scenarios of increasing difficulty. Measure time-to-resolve, error rate (build failing after resolution), and subjective confidence. This is what validates or revises the "90%" aspiration.
+Task-based comparison versus built-in merge tooling, 15–20 developers, 6 conflict scenarios of increasing difficulty. Measure time-to-resolve, error rate (build failing after resolution), and subjective confidence. This is what validates or revises the "90%" aspiration. The session shape and the scorer are in `docs/study-protocol.md`. A score is recorded only after those sessions exist.
 
 ## Agent interface tests
 
