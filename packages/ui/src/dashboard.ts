@@ -1,6 +1,6 @@
 import type { DashboardRow, DashboardSummary } from "@smartmerge/protocol";
 
-export const DASHBOARD_ROW_HEIGHT = 32;
+export const DASHBOARD_ROW_HEIGHT = 48;
 export const DASHBOARD_WINDOW = 16;
 
 const GROUP_ORDER = ["blocked", "needs-review", "ready"] as const;

@@ -20,7 +20,7 @@ export function MergeDashboard({ summary }: { summary: DashboardSummary }): Reac
     <section className="sm-panel sm-dashboard" aria-label="Merge dashboard">
       <header className="sm-header">
         <h1 className="sm-title">Merge dashboard</h1>
-        <p className="sm-summary" role="status">
+        <p className="sm-muted" role="status">
           {resolved} of {hunks} conflicts resolved
         </p>
         <div
@@ -65,7 +65,7 @@ export function MergeDashboard({ summary }: { summary: DashboardSummary }): Reac
 function DashboardItemView({ item }: { item: DashboardItem }): ReactElement {
   if (item.kind === "header") {
     return (
-      <h2 className="sm-row">
+      <h2 className="sm-group">
         <button type="button" data-group={item.group}>
           {item.label} ({item.count})
         </button>
@@ -73,14 +73,25 @@ function DashboardItemView({ item }: { item: DashboardItem }): ReactElement {
     );
   }
   const { row } = item;
+  const checks = checkStrip(row.checks);
+  const strategy = row.topStrategy ?? "No recommendation";
+  const band = row.band ?? "Not scored";
   return (
-    <div className="sm-row" data-dashboard-row="true">
-      <span className="sm-path">{row.path}</span>
-      <span>{row.topStrategy ?? "No recommendation"}</span>
-      <span>{row.band ?? "Not scored"}</span>
-      <span>{checkStrip(row.checks)}</span>
+    <div className="sm-file" data-dashboard-row="true">
+      <span className="sm-path" title={row.path}>
+        {row.path}
+      </span>
+      <span className="sm-band">{band}</span>
       <span className="sm-heat" aria-hidden="true">
         <span style={{ width: `${String(Math.round(row.risk * 100))}%` }} />
+      </span>
+      <span className="sm-meta">
+        <span className="sm-strategy" title={strategy}>
+          {strategy}
+        </span>
+        <span className="sm-checks" title={checks}>
+          {checks}
+        </span>
       </span>
     </div>
   );

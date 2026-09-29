@@ -43,7 +43,83 @@ describe("merge dashboard", () => {
     expect(sample.p95).toBeLessThan(16);
     await page.close();
   }, 30_000);
+
+  it("keeps group labels and file details on their own lines", async () => {
+    const page = await context.newPage();
+    await page.setViewportSize({ width: 720, height: 900 });
+    await page.setContent(renderDashboardDocument(mixedSummary()), { waitUntil: "load" });
+    const fitted = await page.evaluate(() => {
+      const strategy = [...document.querySelectorAll(".sm-strategy")].find((node) =>
+        node.textContent.includes("structural-3way"),
+      );
+      const checks = [...document.querySelectorAll(".sm-checks")].find((node) =>
+        node.textContent.includes("types not run"),
+      );
+      const buttons = [...document.querySelectorAll(".sm-group button")];
+      const wrapped = buttons.some((button) => button.scrollHeight > button.clientHeight + 1);
+      const strategyCut =
+        strategy instanceof HTMLElement && strategy.scrollWidth > strategy.clientWidth + 1;
+      const checksCut =
+        checks instanceof HTMLElement && checks.scrollWidth > checks.clientWidth + 1;
+      return { wrapped, strategyCut, checksCut, hasStrategy: strategy !== undefined };
+    });
+    expect(fitted.hasStrategy).toBe(true);
+    expect(fitted.wrapped).toBe(false);
+    expect(fitted.strategyCut).toBe(false);
+    expect(fitted.checksCut).toBe(false);
+    await page.setViewportSize({ width: 320, height: 900 });
+    const clipped = await page.evaluate(() => {
+      const view = document.documentElement.clientWidth;
+      return [...document.querySelectorAll("button")].some((button) => {
+        const box = button.getBoundingClientRect();
+        return box.height === 0 || box.left < -1 || box.right > view + 1;
+      });
+    });
+    expect(clipped).toBe(false);
+    await page.close();
+  });
 });
+
+function mixedSummary(): DashboardSummary {
+  return {
+    rows: [
+      {
+        path: "src/blocked.ts",
+        languageId: "typescript",
+        hunkCount: 1,
+        topStrategy: "structural-3way",
+        confidence: 0.2,
+        band: "low",
+        checks: { syntax: "fail", symbols: "unknown" },
+        risk: 1,
+        group: "blocked",
+      },
+      {
+        path: "src/review.ts",
+        languageId: "typescript",
+        hunkCount: 2,
+        topStrategy: "whitespace-format",
+        confidence: 0.8,
+        band: "medium",
+        checks: { syntax: "pass", symbols: "pass" },
+        risk: 0.2,
+        group: "needs-review",
+      },
+      {
+        path: "src/ready.ts",
+        languageId: "typescript",
+        hunkCount: 1,
+        topStrategy: "identical",
+        confidence: 0.99,
+        band: "certain",
+        checks: { syntax: "pass", symbols: "pass" },
+        risk: 0,
+        group: "ready",
+      },
+    ],
+    totals: { files: 3, hunks: 4, resolved: 1, safeToAccept: 1 },
+  };
+}
 
 function manyRows(count: number): DashboardSummary {
   const rows = Array.from({ length: count }, (_, index) => ({
