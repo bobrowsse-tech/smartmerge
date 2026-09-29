@@ -17,6 +17,7 @@ describe("browser document", () => {
     expect(browser).toContain('href="/?theme=contrast"');
     expect(browser).toContain('href="/panel?path=src%2Fapp.ts&amp;theme=dark"');
     expect(browser).toContain("structural-3way");
+    expect(browser).toContain('class="sm-logo"');
 
     const editor = renderDashboardDocument(summary());
     expect(editor).not.toContain("data-file-links");
