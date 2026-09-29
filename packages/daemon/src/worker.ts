@@ -1,8 +1,14 @@
 import { parentPort } from "node:worker_threads";
-import { initParsers, proposeForFile } from "@smartmerge/core";
+import { initParsers, isStructuralLanguage, proposeForFile } from "@smartmerge/core";
 import type { WorkerRequest } from "./jobs.js";
 
-const ready = initParsers().catch(() => undefined);
+let ready: Promise<void> | null = null;
+
+/** Load syntax parsers once, and only for a language that uses them. */
+function ensureParsers(): Promise<void> {
+  ready ??= initParsers().catch(() => undefined);
+  return ready;
+}
 
 const cancelled = new Set<string>();
 
@@ -12,7 +18,7 @@ parentPort?.on("message", (message: WorkerRequest) => {
     return;
   }
   const finish = (): void => {
-    void ready.then(() => {
+    const run = (): void => {
       if (cancelled.delete(message.jobId)) return;
       try {
         parentPort?.postMessage({
@@ -24,7 +30,12 @@ parentPort?.on("message", (message: WorkerRequest) => {
         const text = error instanceof Error ? error.message : "Worker failed";
         parentPort?.postMessage({ kind: "error", jobId: message.jobId, message: text });
       }
-    });
+    };
+    if (isStructuralLanguage(message.file.languageId)) {
+      void ensureParsers().then(run);
+      return;
+    }
+    run();
   };
   if (message.delayMs > 0) {
     setTimeout(finish, message.delayMs);

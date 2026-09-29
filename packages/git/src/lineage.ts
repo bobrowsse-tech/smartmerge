@@ -58,6 +58,7 @@ export async function readRangeCommits(
   const result = await git(
     repoRoot,
     [
+      "--no-pager",
       "log",
       `-L${String(start)},${String(end)}:${path}`,
       "-n",
