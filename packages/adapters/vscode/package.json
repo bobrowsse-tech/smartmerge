@@ -1,0 +1,60 @@
+{
+  "name": "@smartmerge/vscode",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Editor adapter for SmartMergeResolver. It renders the shared panel and forwards actions to the daemon.",
+  "license": "Apache-2.0",
+  "publisher": "smartmerge",
+  "displayName": "SmartMergeResolver",
+  "type": "module",
+  "main": "./dist/extension.js",
+  "types": "./dist/extension.d.ts",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "activationEvents": [
+    "workspaceContains:.git"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "smartmerge.refresh",
+        "title": "Refresh conflicts"
+      },
+      {
+        "command": "smartmerge.openPanel",
+        "title": "Open the merge panel"
+      },
+      {
+        "command": "smartmerge.acceptFile",
+        "title": "Accept the recommended resolution"
+      },
+      {
+        "command": "smartmerge.undo",
+        "title": "Undo the last resolution"
+      }
+    ]
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/extension.d.ts",
+      "default": "./dist/extension.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run --config ../../../vitest.config.ts"
+  },
+  "dependencies": {
+    "@smartmerge/daemon": "workspace:*",
+    "@smartmerge/protocol": "workspace:*",
+    "@smartmerge/ui": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.0",
+    "@types/vscode": "1.138.0"
+  }
+}
