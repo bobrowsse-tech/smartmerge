@@ -24,6 +24,7 @@ try {
       fixture,
       `--user-data-dir=${join(shortProfile(), "data")}`,
       `--extensions-dir=${join(shortProfile(), "ext")}`,
+      "--disable-gpu",
       "--disable-workspace-trust",
       "--disable-telemetry",
       "--skip-welcome",

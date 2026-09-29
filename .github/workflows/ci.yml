@@ -92,4 +92,4 @@ jobs:
         run: pnpm --filter @smartmerge/ui storybook:build
 
       - name: Editor host test
-        run: pnpm --filter @smartmerge/vscode test:host
+        run: xvfb-run -a pnpm --filter @smartmerge/vscode test:host
