@@ -1,27 +1,66 @@
 #!/usr/bin/env node
 import { applyFile, undoApply } from "./act.js";
+import { installMergetool, resolveAuto, resolveInteractive, runMergetool } from "./resolve.js";
 import { statusReport } from "./status.js";
 
 const args = process.argv.slice(2);
 const command = args[0];
 const usage =
   "Usage: smart-merge status [--repo <path>]\n" +
+  "       smart-merge resolve [file] [--auto] [--repo <path>]\n" +
+  "       smart-merge mergetool <base> <local> <remote> <merged>\n" +
+  "       smart-merge install-mergetool [--repo <path>]\n" +
   "       smart-merge apply <file> [--candidate <id>] [--repo <path>]\n" +
   "       smart-merge undo [--repo <path>]\n";
 
-if (command !== "status" && command !== "apply" && command !== "undo") {
+if (
+  command !== "status" &&
+  command !== "apply" &&
+  command !== "undo" &&
+  command !== "resolve" &&
+  command !== "mergetool" &&
+  command !== "install-mergetool"
+) {
   process.stderr.write(usage);
   process.exit(2);
 }
 
 try {
-  const parsed = parseArgs(command, args.slice(1));
-  if (command === "status") {
+  if (command === "mergetool") {
+    const [base, local, remote, merged, extra] = args.slice(1);
+    if (
+      base === undefined ||
+      local === undefined ||
+      remote === undefined ||
+      merged === undefined ||
+      extra !== undefined
+    ) {
+      process.stderr.write(usage);
+      process.exit(2);
+    }
+    const result = await runMergetool(base, local, remote, merged);
+    process.stdout.write(result.text);
+    process.exit(result.code);
+  }
+  if (command === "install-mergetool") {
+    const parsed = parseArgs(command, args.slice(1));
+    process.stdout.write(await installMergetool(parsed.repo));
+  } else if (command === "resolve") {
+    const parsed = parseArgs(command, args.slice(1));
+    const result = parsed.auto
+      ? await resolveAuto(parsed.repo, parsed.file)
+      : await resolveInteractive(parsed.repo, parsed.file, process.stdin.isTTY);
+    process.stdout.write(result.text);
+    process.exit(result.code);
+  } else if (command === "status") {
+    const parsed = parseArgs(command, args.slice(1));
     const report = await statusReport(parsed.repo);
     process.stdout.write(report.text);
   } else if (command === "undo") {
+    const parsed = parseArgs(command, args.slice(1));
     process.stdout.write(await undoApply(parsed.repo));
   } else {
+    const parsed = parseArgs(command, args.slice(1));
     if (parsed.file === undefined) {
       process.stderr.write(usage);
       process.exit(2);
@@ -38,14 +77,20 @@ interface ParsedArgs {
   repo: string;
   file?: string;
   candidate?: string;
+  auto?: boolean;
 }
 
 function parseArgs(command: string, args: string[]): ParsedArgs {
   let repo = process.cwd();
   let file: string | undefined;
   let candidate: string | undefined;
+  let auto = false;
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
+    if (arg === "--auto" && command === "resolve") {
+      auto = true;
+      continue;
+    }
     if (arg === "--repo" || arg === "--candidate") {
       const next = args[index + 1];
       if (next === undefined || next.startsWith("--")) {
@@ -58,11 +103,14 @@ function parseArgs(command: string, args: string[]): ParsedArgs {
     }
     if (arg === undefined || arg.startsWith("--"))
       throw new Error(`Unknown argument: ${arg ?? ""}`);
-    if (command !== "apply" || file !== undefined) throw new Error(`Unknown argument: ${arg}`);
+    if ((command !== "apply" && command !== "resolve") || file !== undefined) {
+      throw new Error(`Unknown argument: ${arg}`);
+    }
     file = arg;
   }
   const parsed: ParsedArgs = { repo };
   if (file !== undefined) parsed.file = file;
   if (candidate !== undefined) parsed.candidate = candidate;
+  if (auto) parsed.auto = true;
   return parsed;
 }
