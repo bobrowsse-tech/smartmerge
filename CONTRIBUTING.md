@@ -31,8 +31,10 @@ Publishing is a git operation, not a laptop `npm publish`.
 2. After it is on `main`, push a tag `vX.Y.Z` that points at that commit.
 3. The Publish workflow checks that the tag is on `main`, builds, and publishes any package that is not `"private": true`.
 
-Packages are private until the license in `docs/decisions/0001-license.md` is accepted. `prepublishOnly` exits if it is not running inside that tag workflow.
+Packages stay `"private": true` until a maintainer removes that flag on purpose. `prepublishOnly` exits if it is not running inside that tag workflow. Accepting the license does not publish a package.
 
 ## License
 
-There is no `LICENSE` file yet. Do not copy this code into another project until one is added.
+`packages/core` and `packages/daemon` are Mozilla Public License 2.0. Every other file in this repository is Apache License 2.0. The texts are in [`LICENSE`](LICENSE) and [`LICENSES/`](LICENSES). Both are free: no fee and no registration.
+
+Maintainers add a `Signed-off-by` line to each commit, certifying the [Developer Certificate of Origin](https://developercertificate.org/). There is no contributor license agreement.

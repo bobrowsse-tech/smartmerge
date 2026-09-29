@@ -2,8 +2,8 @@
   "name": "smartmerge",
   "private": true,
   "version": "0.0.0",
-  "description": "IDE-agnostic merge conflict resolver with verification. License not yet chosen.",
-  "license": "UNLICENSED",
+  "description": "IDE-agnostic merge conflict resolver with verification.",
+  "license": "SEE LICENSE IN LICENSE",
   "packageManager": "pnpm@12.6.0",
   "engines": {
     "node": ">=24"

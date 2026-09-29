@@ -4,7 +4,7 @@ SmartMerge is being built as a free, IDE-agnostic merge conflict resolver. It ex
 
 > **Status:** walking skeleton. `smart-merge status` lists conflicted files in a git repository. Specifications live in [`docs/`](docs/README.md). Nothing here is released yet, and all performance and accuracy figures in the docs are targets, not measurements.
 >
-> **License:** not chosen yet. Until [`LICENSE`](docs/decisions/0001-license.md) exists, do not reuse this code. See [`docs/decisions/0001-license.md`](docs/decisions/0001-license.md).
+> **License:** [`packages/core`](packages/core) and [`packages/daemon`](packages/daemon) are MPL-2.0. Everything else in this repository is Apache-2.0. See [`LICENSE`](LICENSE).
 
 ## Goals
 

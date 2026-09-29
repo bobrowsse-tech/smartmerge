@@ -1,0 +1,15 @@
+SmartMerge uses two free licenses. Using them costs nothing: no fee, no registration, and no contributor license agreement.
+
+packages/core and packages/daemon
+  Mozilla Public License 2.0.
+  Full text: LICENSES/MPL-2.0.txt
+  The same text is stored as LICENSE inside each of those packages, so a copy of the package still carries the license.
+  Those source files do not repeat a header. The package LICENSE is the notice Exhibit A of the MPL allows in a relevant directory.
+  The files are compatible with secondary licenses. Exhibit B is not applied.
+
+Every other file in this repository
+  Apache License 2.0.
+  Full text: LICENSES/Apache-2.0.txt
+  The same text is stored as LICENSE inside each Apache-2.0 package.
+
+Contributions are covered by the Developer Certificate of Origin (https://developercertificate.org/).

@@ -9,10 +9,13 @@ Goal: the best merge-resolution tool, free and open source, with no paywalled fe
 3. **Local-first.** No servers required, so hosting cost is zero. AI features use the user's own keys or a local model.
 4. **Transparent.** Public roadmap, public benchmarks, public decisions (ADRs).
 
-## License (decide via ADR; recommendation)
+## License
 
-- **Apache-2.0** for all packages: permissive, patent grant, friendly to corporate adoption and to IDE marketplaces.
-- Alternative for stronger protection against closed forks: MPL-2.0 for `core` and `daemon`, Apache-2.0 elsewhere. Record the decision and rationale in `docs/decisions/0001-license.md`.
+Decided in [`docs/decisions/0001-license.md`](decisions/0001-license.md):
+
+- **MPL-2.0** for `packages/core` and `packages/daemon`, so a distributed change to those files stays under the same license.
+- **Apache-2.0** for every other package and for the rest of the repository: permissive, with a patent grant, and usable in IDE marketplaces.
+- Both licenses are free. Applying them has no fee, no registration, and no paid service.
 - DCO sign-off (not CLA) to keep contribution friction low.
 
 ## Governance
