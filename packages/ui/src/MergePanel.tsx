@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { Logo } from "./Logo.js";
 import type { PanelModel } from "./model.js";
 
 /** Presentational merge panel. It does not call git or decide a resolution. */
@@ -6,7 +7,10 @@ export function MergePanel({ model }: { model: PanelModel }): ReactElement {
   if (model.kind !== "conflict") {
     return (
       <section className="sm-panel" aria-label={model.title}>
-        <h1 className="sm-title">{model.title}</h1>
+        <h1 className="sm-title">
+          <Logo />
+          {model.title}
+        </h1>
         {"message" in model ? <p className="sm-muted">{model.message}</p> : null}
       </section>
     );
@@ -15,7 +19,10 @@ export function MergePanel({ model }: { model: PanelModel }): ReactElement {
   return (
     <section className="sm-panel" aria-label={view.title}>
       <header className="sm-header">
-        <h1 className="sm-title">{view.title}</h1>
+        <h1 className="sm-title">
+          <Logo />
+          {view.title}
+        </h1>
         <p>{view.headline}</p>
         <p className="sm-summary" role="status" aria-label={view.summary}>
           {view.summary}

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" role="img" aria-labelledby="title">
+  <title id="title">SmartMergeResolver</title>
+  <path d="M6 6.5h6.2c3.6 0 3.8 5.2 3.8 8.3" stroke="#1d4ed8" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M26 6.5h-6.2c-3.6 0-3.8 5.2-3.8 8.3" stroke="#6d28d9" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M16 14.8v10.7" stroke="#0f766e" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="16" cy="14.8" r="1.7" fill="#0f766e"/>
+</svg>

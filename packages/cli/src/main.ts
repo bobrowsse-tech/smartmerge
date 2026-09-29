@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { applyFile, undoApply } from "./act.js";
-import { runTerminal } from "./run-terminal.js";
+import { runTerminal } from "./terminal.js";
 import { installMergetool, resolveAuto, resolveInteractive, runMergetool } from "./resolve.js";
 import { statusReport } from "./status.js";
 import { serveUi } from "./ui-server.js";

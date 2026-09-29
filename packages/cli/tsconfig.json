@@ -7,5 +7,6 @@
     "types": ["node"]
   },
   "include": ["src"],
+  "exclude": ["dist"],
   "references": [{ "path": "../protocol" }, { "path": "../daemon" }, { "path": "../ui" }]
 }

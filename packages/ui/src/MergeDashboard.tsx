@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import type { DashboardSummary } from "@smartmerge/protocol";
+import { Logo } from "./Logo.js";
 import {
   DASHBOARD_ROW_HEIGHT,
   DASHBOARD_WINDOW,
@@ -28,7 +29,10 @@ export function MergeDashboard({
   return (
     <section className="sm-panel sm-dashboard" aria-label="Merge dashboard">
       <header className="sm-header">
-        <h1 className="sm-title">Merge dashboard</h1>
+        <h1 className="sm-title">
+          <Logo />
+          Merge dashboard
+        </h1>
         <p className="sm-muted" role="status">
           {resolved} of {hunks} conflicts resolved
         </p>
