@@ -1,8 +1,8 @@
 {
-  "name": "@smartmerge/cli",
+  "name": "smart-merge-resolver",
   "version": "0.0.0",
   "private": true,
-  "description": "smart-merge command. Status talks to the daemon over stdio.",
+  "description": "SmartMergeResolver command. Installed from npm as smart-merge-resolver; the command is smart-merge.",
   "license": "Apache-2.0",
   "type": "module",
   "bin": {

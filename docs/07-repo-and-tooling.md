@@ -15,7 +15,7 @@ smartmerge/
 │  ├─ context/               # lineage providers
 │  ├─ llm/                   # providers, redaction, prompts
 │  ├─ daemon/                # smartmerged
-│  ├─ cli/                   # smart-merge
+│  ├─ cli/                   # npm: smart-merge-resolver
 │  ├─ ui/                    # React shared webview
 │  └─ adapters/
 │     ├─ vscode/

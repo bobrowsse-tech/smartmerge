@@ -46,7 +46,7 @@
 | `context`    | Commit/issue lineage providers (git, GitHub, GitLab, Jira)           |
 | `llm`        | Provider interface, redaction, prompt builders                       |
 | `daemon`     | RPC server, worker pool, cache                                       |
-| `cli`        | `smart-merge` binary, mergetool integration, `--json` and CI modes   |
+| `cli`        | npm package `smart-merge-resolver`; `smart-merge` command            |
 | `mcp`        | MCP server exposing the engine to AI agents (see 14)                 |
 | `agent-kit`  | Agent instructions snippet and installable agent skill (see 14)      |
 | `ui`         | Shared React webview app                                             |
