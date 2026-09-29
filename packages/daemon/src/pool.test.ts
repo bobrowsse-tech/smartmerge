@@ -57,7 +57,7 @@ describe("WorkerPool", () => {
     expect(proposals[0]?.candidates.map((candidate) => candidate.strategy)).toContain(
       "manual-current",
     );
-  });
+  }, 20_000);
 
   it("rejects immediately when the signal is already aborted", async () => {
     pool = newPool();

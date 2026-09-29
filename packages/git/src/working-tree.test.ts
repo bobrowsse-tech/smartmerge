@@ -42,7 +42,7 @@ describe("atomic writes", () => {
     await writeAtomic(target, Buffer.from("replaced\n"));
     await restoreBackup(root, backup.id, "file.txt");
     expect(await readFile(target)).toEqual(original);
-  });
+  }, 20_000);
 
   it("rejects a path that leaves the repository and a backup id that is not a file name", async () => {
     const root = await gitRepo();

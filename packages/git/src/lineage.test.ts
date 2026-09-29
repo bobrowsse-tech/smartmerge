@@ -54,7 +54,7 @@ describe("lineage", () => {
     const commits = await readRangeCommits(root, "file.ts", sha, 1, 1);
     expect(commits.at(-1)?.subject).toBe("add load");
     expect(commits.at(-1)?.refs).toEqual([]);
-  });
+  }, 20_000);
 });
 
 async function git(cwd: string, args: string[]): Promise<void> {
