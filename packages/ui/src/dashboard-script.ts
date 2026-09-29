@@ -23,7 +23,8 @@ if (payload instanceof HTMLElement && payload.textContent && scroller instanceof
       return kind + " " + word;
     }).join(", ");
   }
-  function items() {
+  let cached = [];
+  function rebuild() {
     const next = [];
     for (const group of order) {
       const rows = summary.rows.filter((row) => row.group === group);
@@ -33,13 +34,16 @@ if (payload instanceof HTMLElement && payload.textContent && scroller instanceof
         for (const row of rows) next.push({ kind: "row", row });
       }
     }
-    return next;
+    cached = next;
   }
+  let view = scroller.clientHeight || 320;
+  window.addEventListener("resize", () => {
+    view = scroller.clientHeight || 320;
+  });
   function render() {
-    const all = items();
+    const all = cached;
     spacer.style.height = String(all.length * rowHeight) + "px";
     const top = scroller.scrollTop;
-    const view = scroller.clientHeight || 320;
     const start = Math.max(0, Math.floor(top / rowHeight) - 2);
     const end = Math.min(all.length, Math.ceil((top + view) / rowHeight) + 2);
     list.style.transform = "translateY(" + String(start * rowHeight) + "px)";
@@ -98,8 +102,10 @@ if (payload instanceof HTMLElement && payload.textContent && scroller instanceof
     if (!group) return;
     if (closed.has(group)) closed.delete(group);
     else closed.add(group);
+    rebuild();
     render();
   });
+  rebuild();
   render();
 }
 `;
