@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import type {
   Actor,
   ConflictSession,
+  DashboardSummary,
   InitializeParams,
   InitializeResult,
   ResolutionProposal,
@@ -19,6 +20,7 @@ import {
   initializeRequest,
   listConflictsRequest,
   actRequest,
+  dashboardRequest,
   proposeRequest,
   shutdownRequest,
 } from "./requests.js";
@@ -58,6 +60,11 @@ export class DaemonClient {
 
   propose(sessionId: string, path: string): Promise<ResolutionProposal[]> {
     return this.connection.sendRequest(proposeRequest, { sessionId, path });
+  }
+
+  /** Rows for the merge dashboard. Propose each file first when recommendations are needed. */
+  dashboard(sessionId: string): Promise<DashboardSummary> {
+    return this.connection.sendRequest(dashboardRequest, { sessionId });
   }
 
   act(

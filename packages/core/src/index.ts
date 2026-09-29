@@ -12,6 +12,7 @@ export {
 } from "./conflicts.js";
 export { classifyConflict, mentionsRenameConflict, type ConflictFacts } from "./classify.js";
 export { initParsers, isStructuralLanguage, parseSource, parsersReady } from "./parse.js";
+export { summarizeDashboard } from "./dashboard.js";
 export { proposeForFile } from "./strategies.js";
 export { mergeRegions, onlyImportChanges, renameMerge } from "./structure.js";
 export { verifyParsed } from "./verify.js";

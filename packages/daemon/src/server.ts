@@ -3,6 +3,7 @@ import { isAbsolute, relative, resolve } from "node:path";
 import type {
   Actor,
   ConflictSession,
+  DashboardSummary,
   InitializeParams,
   InitializeResult,
   ResolutionProposal,
@@ -11,7 +12,7 @@ import type {
   UserAction,
 } from "@smartmerge/protocol";
 import { PROTOCOL_VERSION } from "@smartmerge/protocol";
-import { buildConflict, defaultConfig, replaceHunk } from "@smartmerge/core";
+import { buildConflict, defaultConfig, replaceHunk, summarizeDashboard } from "@smartmerge/core";
 import {
   appendSessionLog,
   backupWorkingFile,
@@ -29,6 +30,7 @@ import { protocolRangeSupported } from "./protocol-range.js";
 import {
   initializeRequest,
   actRequest,
+  dashboardRequest,
   listConflictsRequest,
   proposeRequest,
   shutdownRequest,
@@ -50,6 +52,7 @@ export class DaemonServer {
     connection.onRequest(initializeRequest, (params) => this.initialize(params));
     connection.onRequest(listConflictsRequest, (params) => this.listConflicts(params));
     connection.onRequest(proposeRequest, (params) => this.propose(params));
+    connection.onRequest(dashboardRequest, (params) => this.dashboard(params));
     connection.onRequest(actRequest, (params) => this.act(params));
     connection.onRequest(shutdownRequest, () => this.shutdown());
   }
@@ -105,6 +108,19 @@ export class DaemonServer {
     } catch (error) {
       throw asRpcError(error);
     }
+  }
+
+  /**
+   * Dashboard rows from proposals already stored on the session.
+   * Files that have not been proposed yet are grouped as needing review.
+   */
+  dashboard(params: { sessionId: string }): DashboardSummary {
+    this.requireInitialized();
+    const session = this.sessions.get(params.sessionId);
+    if (!session) {
+      throw new ResponseError(ErrorCodes.InvalidParams, `Unknown session ${params.sessionId}`);
+    }
+    return summarizeDashboard(session);
   }
 
   async propose(params: { sessionId: string; path: string }): Promise<ResolutionProposal[]> {
