@@ -1,5 +1,5 @@
 /**
- * SmartMerge protocol — single source of truth for all cross-package contracts.
+ * SmartMergeResolver protocol — single source of truth for all cross-package contracts.
  * Seed `packages/protocol/src/index.ts` with this file verbatim.
  * Transport: JSON-RPC 2.0 over stdio or local socket. Version negotiated in `initialize`.
  */

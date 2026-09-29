@@ -1,16 +1,16 @@
 # 14 — AI and Agent Interface
 
-SmartMerge has two separate relationships with AI:
+SmartMergeResolver has two separate relationships with AI:
 
-1. **AI as a helper inside SmartMerge** (optional LLM tier, see 03). Off by default.
-2. **AI agents as clients of SmartMerge** (this doc). Coding agents, CLI agents and CI bots can resolve conflicts through the same engine, with the same safety guarantees as a human.
+1. **AI as a helper inside SmartMergeResolver** (optional LLM tier, see 03). Off by default.
+2. **AI agents as clients of SmartMergeResolver** (this doc). Coding agents, CLI agents and CI bots can resolve conflicts through the same engine, with the same safety guarantees as a human.
 
 The engine works fully without any LLM. Agents make it better; they are never required.
 
 ## Principles
 
 1. **Agents are first-class clients**, not an afterthought. Every human capability has a machine-readable equivalent.
-2. **Verification is the product.** SmartMerge can verify a resolution written by _any_ author (human, agent, or LLM) and report whether it parses, resolves symbols, type-checks and lints. This makes any agent's merge safer.
+2. **Verification is the product.** SmartMergeResolver can verify a resolution written by _any_ author (human, agent, or LLM) and report whether it parses, resolves symbols, type-checks and lints. This makes any agent's merge safer.
 3. **Same guardrails for everyone.** Backups, undo, band thresholds and audit logging apply to agents exactly as to humans.
 4. **Token-efficient.** Compact outputs, pagination, summary modes, so agents don't burn context on noise.
 5. **Untrusted content stays untrusted.** Code, commit messages and issue text are data, never instructions (see Safety).

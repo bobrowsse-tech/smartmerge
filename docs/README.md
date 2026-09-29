@@ -1,4 +1,4 @@
-# SmartMerge Spec Package
+# SmartMergeResolver spec package
 
 Intelligent, IDE-agnostic merge conflict resolver. **TypeScript-first.**
 

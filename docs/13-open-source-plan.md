@@ -42,7 +42,7 @@ Decided in [`docs/decisions/0001-license.md`](decisions/0001-license.md):
 ## Distribution
 
 - VS Code Marketplace and Open VSX (covers Cursor, Windsurf, VSCodium).
-- npm (`smart-merge`), Homebrew, Scoop/winget, Nix, and static binaries via Node SEA.
+- npm, Homebrew, Scoop/winget, Nix, and static binaries via Node SEA. The command is `smart-merge`. Do not publish under the npm name `smart-merge`; that name is taken (ADR 0001).
 - JetBrains Marketplace, Visual Studio Marketplace, Neovim via standard plugin managers.
 - Reproducible builds, signed artifacts, SBOM.
 
