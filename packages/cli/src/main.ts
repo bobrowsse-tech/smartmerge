@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 import { applyFile, undoApply } from "./act.js";
+import { runTerminal } from "./run-terminal.js";
 import { installMergetool, resolveAuto, resolveInteractive, runMergetool } from "./resolve.js";
 import { statusReport } from "./status.js";
+import { serveUi } from "./ui-server.js";
 
 const args = process.argv.slice(2);
 const command = args[0];
 const usage =
   "Usage: smart-merge status [--repo <path>]\n" +
   "       smart-merge resolve [file] [--auto] [--repo <path>]\n" +
+  "       smart-merge ui [--repo <path>] [--port <n>] [--no-open]\n" +
   "       smart-merge mergetool <base> <local> <remote> <merged>\n" +
   "       smart-merge install-mergetool [--repo <path>]\n" +
   "       smart-merge apply <file> [--candidate <id>] [--repo <path>]\n" +
@@ -19,7 +22,8 @@ if (
   command !== "undo" &&
   command !== "resolve" &&
   command !== "mergetool" &&
-  command !== "install-mergetool"
+  command !== "install-mergetool" &&
+  command !== "ui"
 ) {
   process.stderr.write(usage);
   process.exit(2);
@@ -42,14 +46,19 @@ try {
     process.stdout.write(result.text);
     process.exit(result.code);
   }
-  if (command === "install-mergetool") {
+  if (command === "ui") {
+    const parsed = parseUiArgs(args.slice(1));
+    await serveUi(parsed.repo, { port: parsed.port, open: parsed.open });
+  } else if (command === "install-mergetool") {
     const parsed = parseArgs(command, args.slice(1));
     process.stdout.write(await installMergetool(parsed.repo));
   } else if (command === "resolve") {
     const parsed = parseArgs(command, args.slice(1));
     const result = parsed.auto
       ? await resolveAuto(parsed.repo, parsed.file)
-      : await resolveInteractive(parsed.repo, parsed.file, process.stdin.isTTY);
+      : process.stdin.isTTY
+        ? await runTerminal(parsed.repo, parsed.file)
+        : await resolveInteractive(parsed.repo, parsed.file, false);
     process.stdout.write(result.text);
     process.exit(result.code);
   } else if (command === "status") {
@@ -113,4 +122,34 @@ function parseArgs(command: string, args: string[]): ParsedArgs {
   if (candidate !== undefined) parsed.candidate = candidate;
   if (auto) parsed.auto = true;
   return parsed;
+}
+
+function parseUiArgs(args: string[]): { repo: string; port: number; open: boolean } {
+  let repo = process.cwd();
+  let port = 4738;
+  let open = process.stdin.isTTY;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--no-open") {
+      open = false;
+      continue;
+    }
+    if (arg === "--repo" || arg === "--port") {
+      const next = args[index + 1];
+      if (next === undefined || next.startsWith("--"))
+        throw new Error(`Missing value after ${arg}`);
+      if (arg === "--repo") repo = next;
+      else {
+        const value = Number(next);
+        if (!Number.isInteger(value) || value < 0 || value > 65535) {
+          throw new Error("Port must be an integer from 0 to 65535.");
+        }
+        port = value;
+      }
+      index += 1;
+      continue;
+    }
+    throw new Error(`Unknown argument: ${arg ?? ""}`);
+  }
+  return { repo, port, open };
 }

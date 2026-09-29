@@ -25,10 +25,17 @@
     "prepublishOnly": "tsx ../../tools/assert-git-publish.ts"
   },
   "devDependencies": {
-    "@types/node": "^24.19.0"
+    "@types/node": "^24.19.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "ink-testing-library": "4.0.0"
   },
   "dependencies": {
     "@smartmerge/daemon": "workspace:*",
-    "@smartmerge/protocol": "workspace:*"
+    "@smartmerge/protocol": "workspace:*",
+    "@smartmerge/ui": "workspace:*",
+    "ink": "7.1.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
   }
 }
