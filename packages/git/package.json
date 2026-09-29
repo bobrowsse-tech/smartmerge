@@ -2,7 +2,7 @@
   "name": "@smartmerge/git",
   "version": "0.0.0",
   "private": true,
-  "description": "Git conflict discovery, rebase side labels, and undoable file writes.",
+  "description": "Git conflict discovery, rebase side labels, commit subjects for conflict ranges, and undoable file writes.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",

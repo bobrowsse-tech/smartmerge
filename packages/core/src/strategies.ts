@@ -1,12 +1,16 @@
 import type {
   Candidate,
   Check,
+  ConfidenceBand,
   ConflictFile,
   ConflictHunk,
   Explanation,
   ResolutionProposal,
   StrategyId,
 } from "@smartmerge/protocol";
+import { isStructuralLanguage, parseSource, parsersReady } from "./parse.js";
+import { mergeRegions, onlyImportChanges, renameMerge } from "./structure.js";
+import { verifyParsed } from "./verify.js";
 import { normalizeWhitespace } from "./whitespace.js";
 
 /**
@@ -75,6 +79,9 @@ function proposeHunk(
     );
   }
 
+  const structural = structuralCandidates(file, hunk);
+  deterministic.push(...structural);
+
   const manuals = [
     manual(hunk, "manual-current", hunk.current, file.operation.current.label),
     manual(hunk, "manual-incoming", hunk.incoming, file.operation.incoming.label),
@@ -92,13 +99,94 @@ function proposeHunk(
     ),
   ];
   const candidates = [...deterministic, ...manuals];
-  const recommended = deterministic[0]?.id ?? null;
+  const chosen = deterministic.find((item) => item.band !== "low") ?? null;
   return {
     hunkId: hunk.id,
-    recommended,
+    recommended: chosen?.id ?? null,
     candidates,
-    explanation: explanation(file, deterministic[0] ?? null),
-    autoApplyEligible: false,
+    explanation: explanation(file, hunk, chosen),
+    autoApplyEligible: chosen?.band === "certain" && !chosen.hazardous,
+  };
+}
+
+function structuralCandidates(file: ConflictFile, hunk: ConflictHunk): Candidate[] {
+  if (!parsersReady() || !isStructuralLanguage(file.languageId) || file.languageId === null) {
+    return [];
+  }
+  const base = parseSource(file.languageId, hunk.base);
+  const current = parseSource(file.languageId, hunk.current);
+  const incoming = parseSource(file.languageId, hunk.incoming);
+  if (!base || !current || !incoming || base.hasErrors || current.hasErrors || incoming.hasErrors) {
+    return [];
+  }
+  const found: Candidate[] = [];
+  const merged = mergeRegions(base.region, current.region, incoming.region);
+  if (merged !== null && merged !== hunk.current && merged !== hunk.incoming) {
+    const strategy = onlyImportChanges(base.region, current.region, incoming.region)
+      ? "list-union"
+      : "structural-3way";
+    const parsed = parseSource(file.languageId, merged);
+    if (parsed) {
+      found.push(
+        checkedCandidate(
+          file,
+          hunk,
+          strategy,
+          merged,
+          parsed,
+          current,
+          incoming,
+          strategy === "list-union"
+            ? {
+                code: "import-union",
+                text: "Import names from both sides are kept. Existing order is preserved because no project sort convention was read.",
+              }
+            : {
+                code: "disjoint-nodes",
+                text: "Each side edited different declarations. Untouched text is copied from the base.",
+              },
+        ),
+      );
+    }
+  }
+  const renamed = renameMerge(base, current, incoming, hunk.base, hunk.current, hunk.incoming);
+  if (renamed !== null && renamed !== hunk.current && renamed !== hunk.incoming) {
+    const parsed = parseSource(file.languageId, renamed);
+    if (parsed) {
+      found.push(
+        checkedCandidate(file, hunk, "rename-aware", renamed, parsed, current, incoming, {
+          code: "rename-applied",
+          text: "One side renamed an identifier. That rename is applied to the other side's edits.",
+        }),
+      );
+    }
+  }
+  return found;
+}
+
+function checkedCandidate(
+  file: ConflictFile,
+  hunk: ConflictHunk,
+  strategy: StrategyId,
+  result: string,
+  parsed: NonNullable<ReturnType<typeof parseSource>>,
+  current: NonNullable<ReturnType<typeof parseSource>>,
+  incoming: NonNullable<ReturnType<typeof parseSource>>,
+  evidence: { code: string; text: string },
+): Candidate {
+  const verified = verifyParsed(file.path, parsed, current, incoming);
+  const confidence = verified.hazardous ? 0.2 : 0.99;
+  const band: ConfidenceBand = verified.hazardous ? "low" : "certain";
+  return {
+    id: `${hunk.id}:${strategy}`,
+    hunkId: hunk.id,
+    strategy,
+    result,
+    checks: verified.checks,
+    hazardous: verified.hazardous,
+    confidence,
+    band,
+    evidence: [evidence],
   };
 }
 
@@ -154,7 +242,11 @@ function manual(
   };
 }
 
-function explanation(file: ConflictFile, chosen: Candidate | null): Explanation {
+function explanation(
+  file: ConflictFile,
+  hunk: ConflictHunk,
+  chosen: Candidate | null,
+): Explanation {
   if (!chosen) {
     return {
       headline: "No safe automatic choice",
@@ -162,17 +254,39 @@ function explanation(file: ConflictFile, chosen: Candidate | null): Explanation 
         `${file.operation.current.label} and ${file.operation.incoming.label} both changed this hunk.`,
       ],
       verificationSummary: "Syntax and symbol checks have not run.",
-      temporalSummary: "Commit history is not attached yet.",
+      temporalSummary: temporalSummary(file, hunk),
     };
   }
   const evidence = chosen.evidence[0];
   return {
     headline: headline(chosen.strategy, file),
     bullets: evidence ? [evidence.text] : [],
-    verificationSummary:
-      "Syntax and symbol checks have not run, so this stays a recommendation and is not applied automatically.",
-    temporalSummary: "Commit history is not attached yet.",
+    verificationSummary: verificationSummary(chosen),
+    temporalSummary: temporalSummary(file, hunk),
   };
+}
+
+function verificationSummary(chosen: Candidate): string {
+  const syntax = chosen.checks.find((check) => check.kind === "syntax");
+  if (!syntax || syntax.status === "unknown") {
+    return "Syntax and symbol checks have not run, so this stays a recommendation and is not applied automatically.";
+  }
+  if (chosen.hazardous)
+    return "Syntax or symbol checks failed, so this is not applied automatically.";
+  if (chosen.band === "certain") {
+    return "Syntax and symbol checks passed. Automatic apply stays off until it is enabled for this repository.";
+  }
+  return "Syntax and symbol checks passed.";
+}
+
+function temporalSummary(file: ConflictFile, hunk: ConflictHunk): string {
+  const current = hunk.temporal.current.commits.at(-1);
+  const incoming = hunk.temporal.incoming.commits.at(-1);
+  if (!current && !incoming) return "Commit history is not attached yet.";
+  const parts: string[] = [];
+  if (current) parts.push(`${file.operation.current.label}: ${current.subject}`);
+  if (incoming) parts.push(`${file.operation.incoming.label}: ${incoming.subject}`);
+  return parts.join(" ");
 }
 
 function headline(strategy: StrategyId, file: ConflictFile): string {
@@ -183,6 +297,12 @@ function headline(strategy: StrategyId, file: ConflictFile): string {
       return "Only one side changed";
     case "whitespace-format":
       return "Only trailing whitespace or line endings differ";
+    case "structural-3way":
+      return "Merge both — different declarations edited";
+    case "list-union":
+      return "Keep the import names from both sides";
+    case "rename-aware":
+      return "Apply the rename to the other side's edits";
     default:
       return `${file.operation.current.label} and ${file.operation.incoming.label} need a choice`;
   }

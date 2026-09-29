@@ -2,7 +2,7 @@
   "name": "@smartmerge/core",
   "version": "0.0.0",
   "private": true,
-  "description": "Merge pipeline. Recommends identical, one-side, and whitespace resolutions.",
+  "description": "Merge pipeline. Recommends deterministic and structural resolutions for TypeScript and JavaScript.",
   "license": "MPL-2.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -22,6 +22,12 @@
     "prepublishOnly": "tsx ../../tools/assert-git-publish.ts"
   },
   "dependencies": {
-    "@smartmerge/protocol": "workspace:*"
+    "@smartmerge/protocol": "workspace:*",
+    "tree-sitter-javascript": "0.25.0",
+    "tree-sitter-typescript": "0.23.2",
+    "web-tree-sitter": "0.27.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.0"
   }
 }
