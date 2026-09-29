@@ -2,7 +2,7 @@ import { performance } from "node:perf_hooks";
 import { join, relative } from "node:path";
 import { withDaemon } from "@smartmerge/daemon";
 import { daemonScript } from "./daemon-path.js";
-import { panelModel, renderPanelDocument } from "@smartmerge/ui";
+import { panelModel, renderDashboardDocument, renderPanelDocument } from "@smartmerge/ui";
 import * as vscode from "vscode";
 import {
   codeLensTitle,
@@ -37,6 +37,7 @@ export function activate(context: vscode.ExtensionContext): void {
     problems,
     vscode.commands.registerCommand("smartmerge.refresh", () => refresh(bar, problems)),
     vscode.commands.registerCommand("smartmerge.openPanel", () => openPanel(0)),
+    vscode.commands.registerCommand("smartmerge.openDashboard", () => openDashboard()),
     vscode.commands.registerCommand("smartmerge.nextConflict", () => openPanel(1)),
     vscode.commands.registerCommand("smartmerge.previousConflict", () => openPanel(-1)),
     vscode.commands.registerCommand("smartmerge.currentConflict", () => selectedPath),
@@ -181,6 +182,71 @@ async function openPanel(delta: number): Promise<string | null> {
   return selectedPath;
 }
 
+async function openDashboard(): Promise<void> {
+  const root = repoRoot();
+  const panel = ensurePanel();
+  if (!root) return;
+  try {
+    await withDaemon(
+      root,
+      async (client) => {
+        await client.initialize(root, "1.0.0", {
+          clientName: "smartmerge-editor",
+          workspaceTrusted: vscode.workspace.isTrusted,
+          supportsWebview: true,
+        });
+        const session = await client.listConflicts(root);
+        for (const entry of session.files) {
+          await client.propose(session.sessionId, entry.file.path);
+        }
+        panel.webview.html = renderDashboardDocument(await client.dashboard(session.sessionId));
+      },
+      { scriptPath: daemonScript() },
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "The daemon failed.";
+    panel.webview.html = renderPanelDocument(
+      panelModel({
+        connected: true,
+        loading: false,
+        applying: false,
+        error: message,
+        llmEnabled: false,
+        offline: true,
+        undoAvailable: false,
+        session: null,
+        selectedIndex,
+      }),
+    );
+  }
+}
+
+async function acceptSafe(): Promise<void> {
+  const root = repoRoot();
+  if (!root) return;
+  await withDaemon(
+    root,
+    async (client) => {
+      await client.initialize(root, "1.0.0", {
+        clientName: "smartmerge-editor",
+        workspaceTrusted: vscode.workspace.isTrusted,
+        supportsWebview: true,
+      });
+      const session = await client.listConflicts(root);
+      const result = await client.act(session.sessionId, {
+        type: "applyAllSafe",
+        minBand: "certain",
+      });
+      const text =
+        result.log.length === 0
+          ? "Nothing was written. Automatic apply is off."
+          : "Accepted the safe resolutions. Undo is available.";
+      void vscode.window.showInformationMessage(text);
+    },
+    { scriptPath: daemonScript() },
+  );
+}
+
 async function accept(
   filePath?: string,
   choice?: { hunkId?: string; candidateId?: string },
@@ -288,6 +354,10 @@ function ensurePanel(): vscode.WebviewPanel {
   const messages = panel.webview.onDidReceiveMessage((message: PanelMessage) => {
     if (message.action === "undo") {
       void undo();
+      return;
+    }
+    if (message.action === "applyAllSafe") {
+      void acceptSafe();
       return;
     }
     if (message.action !== "accept" && message.action !== "alternative") return;

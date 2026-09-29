@@ -115,5 +115,16 @@ pre { margin: 0; max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere
 button { box-sizing: border-box; max-width: 100%; min-height: 32px; margin-right: var(--sm-space-2); border: 1px solid var(--sm-border); border-radius: 6px; background: var(--sm-surface-raised); color: var(--sm-text); padding: 4px 12px; overflow-wrap: anywhere; }
 button.sm-primary { background: var(--sm-accent); color: var(--sm-surface); border-color: var(--sm-accent); }
 .sm-danger { color: var(--sm-danger); }
+.sm-dashboard { width: min(100%, 80ch); }
+.sm-progress { height: 4px; background: var(--sm-border); }
+.sm-progress > span { display: block; height: 4px; background: var(--sm-accent); }
+.sm-scroll { height: 320px; overflow: auto; position: relative; }
+.sm-spacer { position: relative; }
+.sm-window { position: absolute; left: 0; right: 0; top: 0; }
+.sm-row { box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto minmax(0, 1.6fr) 48px; gap: var(--sm-space-2); align-items: center; height: 32px; overflow: hidden; }
+.sm-row h2, .sm-row button { margin: 0; }
+.sm-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sm-heat { height: 4px; background: var(--sm-border); }
+.sm-heat > span { display: block; height: 4px; background: var(--sm-warn); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 `;

@@ -1,6 +1,7 @@
 import type {
   Actor,
   ConflictSession,
+  DashboardSummary,
   InitializeParams,
   InitializeResult,
   ResolutionProposal,
@@ -21,6 +22,9 @@ export const proposeRequest = new RequestType<
   ResolutionProposal[],
   void
 >("resolution/propose");
+export const dashboardRequest = new RequestType<{ sessionId: string }, DashboardSummary, void>(
+  "dashboard/get",
+);
 export const actRequest = new RequestType<
   { sessionId: string; action: UserAction; actor?: Actor },
   { log: SessionLogEntry[]; session: ConflictSession },

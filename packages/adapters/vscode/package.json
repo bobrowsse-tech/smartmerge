@@ -26,6 +26,10 @@
         "title": "Open the merge panel"
       },
       {
+        "command": "smartmerge.openDashboard",
+        "title": "Open the merge dashboard"
+      },
+      {
         "command": "smartmerge.acceptFile",
         "title": "Accept the recommended resolution"
       },
