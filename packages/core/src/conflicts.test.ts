@@ -17,8 +17,9 @@ describe("parseConflictHunks", () => {
       id: "hunk:1",
       range: { startLine: 1, endLine: 5 },
       base: "",
-      current: "alpha",
-      incoming: "beta",
+      baseFromMarker: false,
+      ours: "alpha",
+      theirs: "beta",
     });
   });
 
@@ -41,13 +42,30 @@ describe("parseConflictHunks", () => {
     const hunks = parseConflictHunks(text);
     expect(hunks).toHaveLength(2);
     expect(hunks[0]?.base).toBe("old");
-    expect(hunks[0]?.current).toBe("alpha");
+    expect(hunks[0]?.baseFromMarker).toBe(true);
+    expect(hunks[0]?.ours).toBe("alpha");
     expect(hunks[1]?.range.startLine).toBe(9);
-    expect(hunks[1]?.incoming).toBe("two");
+    expect(hunks[1]?.theirs).toBe("two");
   });
 
   it("drops an unfinished marker block", () => {
     expect(parseConflictHunks("<<<<<<< HEAD\nalpha\n")).toEqual([]);
+  });
+});
+
+describe("buildConflict", () => {
+  it("labels the replayed commit as current during a rebase", () => {
+    const file = toConflictFile(
+      {
+        path: "file.txt",
+        text: "<<<<<<< HEAD\nonto\n=======\nreplayed\n>>>>>>> feature\n",
+        binary: false,
+        missing: false,
+      },
+      { ...operation, operation: "rebase" },
+    );
+    expect(file.hunks[0]?.current).toBe("replayed");
+    expect(file.hunks[0]?.incoming).toBe("onto");
   });
 });
 

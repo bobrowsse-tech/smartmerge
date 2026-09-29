@@ -1,8 +1,11 @@
 import type {
+  Actor,
   ConflictSession,
   InitializeParams,
   InitializeResult,
   ResolutionProposal,
+  SessionLogEntry,
+  UserAction,
 } from "@smartmerge/protocol";
 import { RequestType, RequestType0 } from "vscode-jsonrpc/node";
 
@@ -18,3 +21,8 @@ export const proposeRequest = new RequestType<
   ResolutionProposal[],
   void
 >("resolution/propose");
+export const actRequest = new RequestType<
+  { sessionId: string; action: UserAction; actor?: Actor },
+  { log: SessionLogEntry[]; session: ConflictSession },
+  void
+>("resolution/act");

@@ -2,7 +2,7 @@
   "name": "@smartmerge/core",
   "version": "0.0.0",
   "private": true,
-  "description": "Merge pipeline. This milestone parses conflict markers and returns stub proposals.",
+  "description": "Merge pipeline. Recommends identical, one-side, and whitespace resolutions.",
   "license": "MPL-2.0",
   "type": "module",
   "main": "./dist/index.js",

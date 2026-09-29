@@ -49,24 +49,29 @@ describe("WorkerPool", () => {
 
   it("returns stub proposals from a worker", async () => {
     pool = newPool();
-    const proposals = await pool.run({ file, delayMs: 0 }, new AbortController().signal);
+    const proposals = await pool.run(
+      { file, delayMs: 0, knownBaseHunkIds: [] },
+      new AbortController().signal,
+    );
     expect(proposals[0]?.recommended).toBeNull();
-    expect(proposals[0]?.candidates).toHaveLength(2);
+    expect(proposals[0]?.candidates.map((candidate) => candidate.strategy)).toContain(
+      "manual-current",
+    );
   });
 
   it("rejects immediately when the signal is already aborted", async () => {
     pool = newPool();
     const controller = new AbortController();
     controller.abort();
-    await expect(pool.run({ file, delayMs: 0 }, controller.signal)).rejects.toBeInstanceOf(
-      CancelledError,
-    );
+    await expect(
+      pool.run({ file, delayMs: 0, knownBaseHunkIds: [] }, controller.signal),
+    ).rejects.toBeInstanceOf(CancelledError);
   });
 
   it("ignores a worker result that arrives after cancellation", async () => {
     pool = newPool();
     const controller = new AbortController();
-    const pending = pool.run({ file, delayMs: 300 }, controller.signal);
+    const pending = pool.run({ file, delayMs: 300, knownBaseHunkIds: [] }, controller.signal);
     setTimeout(() => {
       controller.abort();
     }, 20);

@@ -5,6 +5,7 @@ export interface ProposeJob {
   jobId: string;
   file: ConflictFile;
   delayMs: number;
+  knownBaseHunkIds: string[];
 }
 
 export type WorkerRequest = ProposeJob | { kind: "cancel"; jobId: string };

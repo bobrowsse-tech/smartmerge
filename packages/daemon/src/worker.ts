@@ -1,5 +1,5 @@
 import { parentPort } from "node:worker_threads";
-import { stubProposals } from "@smartmerge/core";
+import { proposeForFile } from "@smartmerge/core";
 import type { WorkerRequest } from "./jobs.js";
 
 const cancelled = new Set<string>();
@@ -15,7 +15,7 @@ parentPort?.on("message", (message: WorkerRequest) => {
       parentPort?.postMessage({
         kind: "result",
         jobId: message.jobId,
-        proposals: stubProposals(message.file),
+        proposals: proposeForFile(message.file, new Set(message.knownBaseHunkIds)),
       });
     } catch (error) {
       const text = error instanceof Error ? error.message : "Worker failed";
