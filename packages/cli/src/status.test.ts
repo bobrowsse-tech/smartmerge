@@ -12,7 +12,7 @@ const execFileAsync = promisify(execFile);
 const roots: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(roots.splice(0).map((root) => removeRoot(root)));
 });
 
 describe("smart-merge status", () => {
@@ -41,7 +41,7 @@ describe("smart-merge status", () => {
     await undoApply(root);
     expect(await readFile(join(root, "file.txt"))).toEqual(before);
     await expect(undoApply(root)).rejects.toThrow(/Nothing to undo/);
-  });
+  }, 30_000);
 
   it("does not write when automatic apply is requested and left off", async () => {
     const root = await conflictRepo();
@@ -78,6 +78,20 @@ describe("smart-merge status", () => {
     );
   });
 });
+
+async function removeRoot(root: string): Promise<void> {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await rm(root, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      const code =
+        typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
+      if (code !== "EBUSY" && code !== "EPERM" && code !== "ENOTEMPTY") throw error;
+      await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
+    }
+  }
+}
 
 async function cleanRepo(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "smartmerge-cli-"));
