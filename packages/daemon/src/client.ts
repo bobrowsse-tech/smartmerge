@@ -2,10 +2,13 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type {
+  Actor,
   ConflictSession,
   InitializeParams,
   InitializeResult,
   ResolutionProposal,
+  SessionLogEntry,
+  UserAction,
 } from "@smartmerge/protocol";
 import {
   createMessageConnection,
@@ -15,6 +18,7 @@ import {
 import {
   initializeRequest,
   listConflictsRequest,
+  actRequest,
   proposeRequest,
   shutdownRequest,
 } from "./requests.js";
@@ -41,6 +45,16 @@ export class DaemonClient {
 
   propose(sessionId: string, path: string): Promise<ResolutionProposal[]> {
     return this.connection.sendRequest(proposeRequest, { sessionId, path });
+  }
+
+  act(
+    sessionId: string,
+    action: UserAction,
+    actor?: Actor,
+  ): Promise<{ log: SessionLogEntry[]; session: ConflictSession }> {
+    const params: { sessionId: string; action: UserAction; actor?: Actor } = { sessionId, action };
+    if (actor !== undefined) params.actor = actor;
+    return this.connection.sendRequest(actRequest, params);
   }
 }
 

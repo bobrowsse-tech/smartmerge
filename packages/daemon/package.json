@@ -2,7 +2,7 @@
   "name": "@smartmerge/daemon",
   "version": "0.0.0",
   "private": true,
-  "description": "JSON-RPC daemon. Walking skeleton for initialize, conflicts/list, and resolution/propose.",
+  "description": "JSON-RPC daemon for conflict listing, deterministic proposals, and undoable apply.",
   "license": "MPL-2.0",
   "type": "module",
   "bin": {

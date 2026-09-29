@@ -12,11 +12,29 @@ import type {
   TemporalContext,
 } from "@smartmerge/protocol";
 
+export interface StageText {
+  /** Stage 1. Null when that stage is absent. */
+  base: string | null;
+  /** Stage 2, git's ours. */
+  ours: string | null;
+  /** Stage 3, git's theirs. */
+  theirs: string | null;
+}
+
 export interface ConflictSource {
   path: string;
   text: string | null;
   binary: boolean;
   missing: boolean;
+  /** When set, overrides marker-only classification. */
+  kind?: ConflictKind;
+  stages?: StageText;
+}
+
+export interface BuiltConflict {
+  file: ConflictFile;
+  /** Hunks whose base text is known, including a known empty base. */
+  knownBaseHunkIds: string[];
 }
 
 const START = /^<{7} (.*)$/;
@@ -28,8 +46,12 @@ interface ParsedHunk {
   id: string;
   range: Range;
   base: string;
-  current: string;
-  incoming: string;
+  /** True when a diff3 `|||||||` section was present, even if that section was empty. */
+  baseFromMarker: boolean;
+  /** Text under `<<<<<<<`. This is git's ours side. */
+  ours: string;
+  /** Text under `>>>>>>>`. This is git's theirs side. */
+  theirs: string;
 }
 
 /**
@@ -41,17 +63,19 @@ export function parseConflictHunks(text: string): ParsedHunk[] {
   const hunks: ParsedHunk[] = [];
   let state: "outside" | "current" | "base" | "incoming" = "outside";
   let startLine = 0;
-  let current: string[] = [];
+  let ours: string[] = [];
   let base: string[] = [];
-  let incoming: string[] = [];
+  let theirs: string[] = [];
+  let baseFromMarker = false;
 
   const close = (endLine: number): void => {
     hunks.push({
       id: `hunk:${String(startLine)}`,
       range: { startLine, endLine },
       base: base.join("\n"),
-      current: current.join("\n"),
-      incoming: incoming.join("\n"),
+      baseFromMarker,
+      ours: ours.join("\n"),
+      theirs: theirs.join("\n"),
     });
     state = "outside";
   };
@@ -61,14 +85,16 @@ export function parseConflictHunks(text: string): ParsedHunk[] {
     if (state === "outside") {
       if (START.test(line)) {
         startLine = lineNumber;
-        current = [];
+        ours = [];
         base = [];
-        incoming = [];
+        theirs = [];
+        baseFromMarker = false;
         state = "current";
       }
       return;
     }
     if (state === "current" && BASE.test(line)) {
+      baseFromMarker = true;
       state = "base";
       return;
     }
@@ -80,31 +106,52 @@ export function parseConflictHunks(text: string): ParsedHunk[] {
       close(lineNumber);
       return;
     }
-    if (state === "current") current.push(line);
+    if (state === "current") ours.push(line);
     else if (state === "base") base.push(line);
-    else incoming.push(line);
+    else theirs.push(line);
   });
 
   return hunks;
 }
 
-/** Build a protocol conflict file from a git unmerged path. */
-export function toConflictFile(file: ConflictSource, operation: OperationContext): ConflictFile {
+/**
+ * Build a protocol conflict file.
+ * During a rebase, git calls the replayed commit "theirs"; that side is `current` here.
+ */
+export function buildConflict(file: ConflictSource, operation: OperationContext): BuiltConflict {
+  const knownBaseHunkIds: string[] = [];
   const hunks: ConflictHunk[] =
     file.text === null
       ? []
-      : parseConflictHunks(file.text).map((hunk) => ({
-          ...hunk,
-          temporal: emptyTemporal(),
-          semanticChanges: [],
-        }));
+      : parseConflictHunks(file.text).map((hunk) => {
+          const resolved = resolveBase(file, hunk);
+          if (resolved.known) knownBaseHunkIds.push(hunk.id);
+          const swapped = operation.operation === "rebase";
+          return {
+            id: hunk.id,
+            range: hunk.range,
+            base: resolved.base,
+            current: swapped ? hunk.theirs : hunk.ours,
+            incoming: swapped ? hunk.ours : hunk.theirs,
+            temporal: emptyTemporal(),
+            semanticChanges: [],
+          };
+        });
   return {
-    path: file.path,
-    kind: conflictKind(file),
-    languageId: languageIdFor(file.path),
-    hunks,
-    operation,
+    file: {
+      path: file.path,
+      kind: file.kind ?? conflictKind(file),
+      languageId: languageIdFor(file.path),
+      hunks,
+      operation,
+    },
+    knownBaseHunkIds,
   };
+}
+
+/** Build a protocol conflict file from a git unmerged path. */
+export function toConflictFile(file: ConflictSource, operation: OperationContext): ConflictFile {
+  return buildConflict(file, operation).file;
 }
 
 /** Stub proposals: both sides are visible, and nothing is recommended. */
@@ -158,6 +205,40 @@ function stubCandidate(hunk: ConflictHunk, strategy: StrategyId, result: string)
     band: "low",
     evidence: [{ code: "stub", text: "No strategy has run yet." }],
   };
+}
+
+function resolveBase(file: ConflictSource, hunk: ParsedHunk): { base: string; known: boolean } {
+  if (hunk.baseFromMarker) return { base: hunk.base, known: true };
+  const stageBase = file.stages?.base;
+  if (stageBase == null || file.text === null) return { base: "", known: false };
+  const recovered = recoverHunkBase(file.text, hunk.range, stageBase);
+  if (recovered === null) return { base: "", known: false };
+  return { base: recovered, known: true };
+}
+
+/**
+ * Recover the base slice of a hunk from the stage-1 blob.
+ * Returns null when the clean lines around the markers do not match that blob.
+ */
+export function recoverHunkBase(fileText: string, range: Range, baseText: string): string | null {
+  const fileLines = splitLines(fileText);
+  const baseLines = splitLines(baseText);
+  const prefix = fileLines.slice(0, range.startLine - 1);
+  const suffix = fileLines.slice(range.endLine);
+  if (baseLines.length < prefix.length + suffix.length) return null;
+  for (let index = 0; index < prefix.length; index += 1) {
+    if (baseLines[index] !== prefix[index]) return null;
+  }
+  const suffixStart = baseLines.length - suffix.length;
+  for (let index = 0; index < suffix.length; index += 1) {
+    if (baseLines[suffixStart + index] !== suffix[index]) return null;
+  }
+  return baseLines.slice(prefix.length, suffixStart).join("\n");
+}
+
+/** Split on LF or CRLF, keeping a trailing empty line when the text ends with a newline. */
+export function splitLines(text: string): string[] {
+  return text.split(/\r?\n/);
 }
 
 function conflictKind(file: ConflictSource): ConflictKind {

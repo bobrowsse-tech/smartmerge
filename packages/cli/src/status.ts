@@ -8,7 +8,7 @@ export interface StatusReport {
   text: string;
 }
 
-/** Ask the daemon for conflicted files and a stub proposal for each. */
+/** Ask the daemon for conflicted files and a deterministic proposal for each. */
 export async function statusReport(start: string): Promise<StatusReport> {
   return withDaemon(start, async (client) => {
     await client.initialize(start);
@@ -26,7 +26,7 @@ export async function statusReport(start: string): Promise<StatusReport> {
   });
 }
 
-/** Human-readable status. Recommendations stay empty until a strategy milestone lands. */
+/** Human-readable status. A recommendation is a review hint, not an applied change. */
 export function formatStatus(
   session: ConflictSession,
   proposals: Map<string, ResolutionProposal[]>,
@@ -37,13 +37,18 @@ export function formatStatus(
   for (const entry of session.files) {
     const hunks = entry.file.hunks.length;
     const hunkNoun = hunks === 1 ? "hunk" : "hunks";
-    const recommended = (proposals.get(entry.file.path) ?? []).some(
-      (proposal) => proposal.recommended !== null,
-    );
     lines.push(entry.file.path);
     lines.push(
-      `  ${entry.file.kind}, ${String(hunks)} ${hunkNoun}, ${recommended ? "has a recommendation" : "no recommendation yet"}`,
+      `  ${entry.file.kind}, ${String(hunks)} ${hunkNoun}, ${recommendation(proposals.get(entry.file.path))}`,
     );
   }
   return `${lines.join("\n")}\n`;
+}
+
+function recommendation(proposals: ResolutionProposal[] | undefined): string {
+  const chosen = proposals?.find((proposal) => proposal.recommended !== null);
+  if (!chosen?.recommended) return "no recommendation yet";
+  const candidate = chosen.candidates.find((item) => item.id === chosen.recommended);
+  const band = candidate?.band ?? "medium";
+  return `${band}: ${chosen.explanation.headline}`;
 }

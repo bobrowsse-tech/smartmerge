@@ -2,7 +2,7 @@
 
 SmartMergeResolver is being built as a free, IDE-agnostic merge conflict resolver. It explains each conflict, proposes a resolution, and checks the merged result before you apply it.
 
-> **Status:** walking skeleton. `smart-merge status` lists conflicted files in a git repository. Specifications live in [`docs/`](docs/README.md). Nothing here is released yet. The npm package name is `smart-merge-resolver`. All performance and accuracy figures in the docs are targets, not measurements.
+> **Status:** deterministic core. `smart-merge status` lists conflicted files and recommends a side when both sides match, only one side changed, or the difference is trailing whitespace. `smart-merge apply` writes that choice after a backup, and `smart-merge undo` restores the previous bytes. Nothing is applied automatically. Specifications live in [`docs/`](docs/README.md). Nothing here is released yet. The npm package name is `smart-merge-resolver`. All performance and accuracy figures in the docs are targets, not measurements.
 >
 > **License:** [`packages/core`](packages/core) and [`packages/daemon`](packages/daemon) are MPL-2.0. Everything else in this repository is Apache-2.0. See [`LICENSE`](LICENSE).
 

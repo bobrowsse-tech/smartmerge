@@ -1,10 +1,11 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { withDaemon } from "@smartmerge/daemon";
+import { applyFile, undoApply } from "./act.js";
 import { statusReport } from "./status.js";
 
 const execFileAsync = promisify(execFile);
@@ -23,6 +24,22 @@ describe("smart-merge status", () => {
     expect(report.text).toContain("no recommendation yet");
     expect(report.text).not.toContain("clean.txt");
     expect(report.session.files).toHaveLength(1);
+  });
+
+  it("applies a chosen side and undo restores the original bytes", async () => {
+    const root = await conflictRepo();
+    const before = await readFile(join(root, "file.txt"));
+    const report = await statusReport(root);
+    const manual = report.proposals
+      .get("file.txt")?.[0]
+      ?.candidates.find((candidate) => candidate.strategy === "manual-current");
+    if (!manual) throw new Error("expected a manual-current candidate");
+    await applyFile(root, "file.txt", manual.id);
+    const applied = await readFile(join(root, "file.txt"), "utf8");
+    expect(applied).not.toContain("<<<<<<<");
+    expect(applied).toContain("current");
+    await undoApply(root);
+    expect(await readFile(join(root, "file.txt"))).toEqual(before);
   });
 
   it("reports an empty repository as having no conflicts", async () => {

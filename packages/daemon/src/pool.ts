@@ -63,7 +63,13 @@ export class WorkerPool {
       signal.addEventListener("abort", onAbort, { once: true });
       this.pending.set(jobId, { signal, resolve, reject, onAbort });
       this.jobsByWorker.get(worker)?.add(jobId);
-      const message: ProposeJob = { kind: "propose", jobId, file: job.file, delayMs: job.delayMs };
+      const message: ProposeJob = {
+        kind: "propose",
+        jobId,
+        file: job.file,
+        delayMs: job.delayMs,
+        knownBaseHunkIds: job.knownBaseHunkIds,
+      };
       worker.postMessage(message);
     });
   }

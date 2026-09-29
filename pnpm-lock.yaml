@@ -237,6 +237,9 @@ importers:
 
   packages/git:
     dependencies:
+      '@smartmerge/core':
+        specifier: workspace:*
+        version: link:../core
       '@smartmerge/protocol':
         specifier: workspace:*
         version: link:../protocol
