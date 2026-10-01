@@ -3,7 +3,15 @@
  * Coefficients exist only after a fit on labeled examples. Nothing in this module invents them,
  * and proposal confidence stays on the existing fixed values until a caller loads a fitted model.
  */
-import type { CheckKind, CheckStatus, ConfidenceBand, StrategyId } from "@smartmerge/protocol";
+import type {
+  ChangeClass,
+  CheckKind,
+  CheckStatus,
+  ConfidenceBand,
+  StrategyId,
+} from "@smartmerge/protocol";
+
+export type { ChangeClass };
 
 /** L2 penalty on every coefficient except the intercept. Keeps a separable fit finite. */
 export const SCORING_L2 = 0.01;
@@ -11,8 +19,18 @@ export const SCORING_L2 = 0.01;
 /** Newton steps for the fit. Fixed so the same examples always yield the same coefficients. */
 const FIT_STEPS = 25;
 
-/** Change classes from the engine spec. The pair of the two sides is one model feature. */
-export const CHANGE_CLASSES = [
+/**
+ * Change classes from the protocol.
+ * A new class fails this assignment until it is added here, so the feature vector cannot drift.
+ */
+function changeClasses<const T extends readonly ChangeClass[]>(
+  list: [Exclude<ChangeClass, T[number]>] extends [never] ? T : never,
+): T {
+  return list;
+}
+
+/** Change classes in protocol order. The pair of the two sides is one model feature. */
+export const CHANGE_CLASSES = changeClasses([
   "rename",
   "formatting",
   "add",
@@ -21,10 +39,7 @@ export const CHANGE_CLASSES = [
   "logic",
   "dependency-bump",
   "comment",
-] as const;
-
-/** One side's change class. */
-export type ChangeClass = (typeof CHANGE_CLASSES)[number];
+]);
 
 const CHECK_LAYERS = ["syntax", "symbols", "types", "lint"] as const;
 const CHECK_STATUSES = ["pass", "fail", "unknown"] as const;
@@ -473,6 +488,9 @@ function assertFeatures(features: ScoreFeatures): void {
     features.llmAgreement > 1
   ) {
     throw new Error("llmAgreement must be a number from 0 to 1.");
+  }
+  if (features.strategy !== "llm-assisted" && features.llmAgreement !== 0) {
+    throw new Error("llmAgreement must be 0 unless the strategy is llm-assisted.");
   }
   if (!Number.isFinite(features.recencyDeltaHours) || features.recencyDeltaHours < 0) {
     throw new Error("recencyDeltaHours must be a non-negative number.");

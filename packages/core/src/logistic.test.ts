@@ -147,6 +147,14 @@ describe("logistic scoring model", () => {
     expect(() =>
       parseTrainingExamples([{ ...features(), conflictLines: -1, correct: true }]),
     ).toThrow(/conflictLines/);
+    expect(() =>
+      parseTrainingExamples([{ ...features(), llmAgreement: 0.5, correct: true }]),
+    ).toThrow(/llm-assisted/);
+    expect(
+      parseTrainingExamples([
+        { ...features({ strategy: "llm-assisted", llmAgreement: 0.5 }), correct: true },
+      ]),
+    ).toHaveLength(1);
     expect(parseTrainingExamples([])).toEqual([]);
   });
 });
