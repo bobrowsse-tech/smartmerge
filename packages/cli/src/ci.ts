@@ -5,12 +5,13 @@ import {
   decideCandidate,
   decideWriteGate,
   defaultConfig,
+  pathIsProtected,
   redactSecrets,
   repoRelativePath,
   tightenPolicy,
 } from "@smartmerge/core";
 import { withDaemon } from "@smartmerge/daemon";
-import { appendAuditRecord, git } from "@smartmerge/git";
+import { appendAuditRecord, findRepoRoot, git } from "@smartmerge/git";
 import { readRepoPolicy } from "@smartmerge/mcp";
 import type {
   Actor,
@@ -59,9 +60,10 @@ export interface CiResult {
  * The actor is always `ci`. A repository policy file can only tighten `--policy`.
  */
 export async function runCi(
-  repo: string,
+  start: string,
   options: { userPolicy?: AgentPolicy; dryRun: boolean },
 ): Promise<{ code: 0 | 1; result: CiResult }> {
+  const repo = await requireGitRoot(start);
   const user = options.userPolicy ?? defaultConfig().agent;
   let overlay: Partial<AgentPolicy>;
   try {
@@ -144,6 +146,33 @@ export async function runCi(
           });
           continue;
         }
+        if (pathIsProtected(path, policy.protectedPaths)) {
+          skipped += 1;
+          reports.push({
+            hunkId: hunk.id,
+            outcome: "skipped",
+            candidateId,
+            reason: "This path is protected by agent policy.",
+          });
+          continue;
+        }
+        if (!counted.has(path) && counted.size >= policy.maxFilesPerRun) {
+          skipped += 1;
+          reports.push({
+            hunkId: hunk.id,
+            outcome: "skipped",
+            candidateId,
+            reason: "This run has reached the file limit.",
+          });
+          continue;
+        }
+        const modeBlocks = policy.mode === "read-only" || policy.mode === "propose-and-verify";
+        if (modeBlocks || options.dryRun) {
+          eligible += 1;
+          counted.add(path);
+          reports.push({ hunkId: hunk.id, outcome: "eligible", candidateId });
+          continue;
+        }
         const gate = decideWriteGate(policy, {
           kind: "apply-all",
           path,
@@ -151,25 +180,13 @@ export async function runCi(
           pathAlreadyCounted: counted.has(path),
         });
         if (!gate.allowed) {
-          const modeBlocks = policy.mode === "read-only" || policy.mode === "propose-and-verify";
-          if (modeBlocks) {
-            eligible += 1;
-            reports.push({ hunkId: hunk.id, outcome: "eligible", candidateId });
-          } else {
-            skipped += 1;
-            reports.push({
-              hunkId: hunk.id,
-              outcome: "skipped",
-              candidateId,
-              reason: gate.message,
-            });
-          }
-          continue;
-        }
-        if (options.dryRun) {
-          eligible += 1;
-          counted.add(path);
-          reports.push({ hunkId: hunk.id, outcome: "eligible", candidateId });
+          skipped += 1;
+          reports.push({
+            hunkId: hunk.id,
+            outcome: "skipped",
+            candidateId,
+            reason: gate.message,
+          });
           continue;
         }
         if (!(await markerRemains(repo, path, hunk))) {
@@ -222,6 +239,15 @@ export async function runCi(
       },
     };
   });
+}
+
+/** Canonical Git root, or a structured error when `start` is not inside a repository. */
+export async function requireGitRoot(start: string): Promise<string> {
+  try {
+    return await findRepoRoot(start);
+  } catch {
+    throw new CommandFailure(2, "NOT_FOUND", "That path is not inside a Git repository.");
+  }
 }
 
 function statusOf(checks: readonly Check[], kind: Check["kind"]): CheckStatus {

@@ -21,6 +21,10 @@
     "test": "vitest run --config ../../vitest.config.ts",
     "prepublishOnly": "tsx ../../tools/assert-git-publish.ts"
   },
+  "dependencies": {
+    "@smartmerge/git": "workspace:*",
+    "@smartmerge/protocol": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^24.19.0"
   }

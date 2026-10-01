@@ -23,6 +23,7 @@ import {
   listUnmerged,
   readOperation,
   readSessionLog,
+  removeWorkingFile,
   restoreBackup,
   writeAtomic,
 } from "@smartmerge/git";
@@ -327,7 +328,8 @@ async function undoLast(
   if (!target) {
     throw new ResponseError(ErrorCodes.InvalidParams, "Nothing to undo");
   }
-  await restoreBackup(repoRoot, target.backupId, target.path);
+  if (target.absentBefore === true) await removeWorkingFile(repoRoot, target.path);
+  else await restoreBackup(repoRoot, target.backupId, target.path);
   const entry: SessionLogEntry = {
     id: randomUUID(),
     at: new Date().toISOString(),

@@ -7,7 +7,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   backupWorkingFile,
   commitAtomic,
+  removeWorkingFile,
   restoreBackup,
+  snapshotWorkingFile,
   stageAtomic,
   writeAtomic,
 } from "./working-tree.js";
@@ -43,6 +45,15 @@ describe("atomic writes", () => {
     await restoreBackup(root, backup.id, "file.txt");
     expect(await readFile(target)).toEqual(original);
   }, 20_000);
+
+  it("records a missing file as absent and removes it on discard", async () => {
+    const root = await gitRepo();
+    const snapshot = await snapshotWorkingFile(root, "new.txt");
+    expect(snapshot.absent).toBe(true);
+    await writeAtomic(join(root, "new.txt"), Buffer.from("created\n"));
+    await removeWorkingFile(root, "new.txt");
+    await expect(readFile(join(root, "new.txt"))).rejects.toThrow();
+  });
 
   it("rejects a path that leaves the repository and a backup id that is not a file name", async () => {
     const root = await gitRepo();

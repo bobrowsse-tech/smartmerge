@@ -4,7 +4,7 @@ import { defaultConfig } from "@smartmerge/core";
 import { startStdioMcp } from "@smartmerge/mcp";
 import type { AgentPolicy } from "@smartmerge/protocol";
 import { applyFile, undoApply } from "./act.js";
-import { runCi } from "./ci.js";
+import { requireGitRoot, runCi } from "./ci.js";
 import { CommandFailure, failureFromMessage, writeError, writeResult } from "./failure.js";
 import { proposeJson, readResultText, resolveJson, statusJson, verifyFile } from "./machine.js";
 import { runTerminal } from "./terminal.js";
@@ -76,7 +76,8 @@ try {
   }
   if (command === "agents") {
     const parsed = parseAgentsArgs(args.slice(1));
-    const installed = await installAgentKit(parsed.repo);
+    const repo = await requireGitRoot(parsed.repo);
+    const installed = await installAgentKit(repo);
     if (parsed.json) writeResult(installed);
     else process.stdout.write("Installed agent instructions in AGENTS.md and the skill file.\n");
     process.exit(0);

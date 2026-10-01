@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -123,6 +123,95 @@ describe("ci command", () => {
       "utf8",
     );
     expect(skill).toContain("name: resolve-conflicts");
+  });
+
+  it("reads policy from the Git root when started in a subdirectory", async () => {
+    const root = await structuralConflict(["note.ts"]);
+    await mkdir(join(root, "nested"));
+    await mkdir(join(root, ".smartmerge"));
+    await writeFile(
+      join(root, ".smartmerge", "policy.json"),
+      JSON.stringify({ mode: "read-only" }),
+    );
+    const result = await runCli(root, [
+      "ci",
+      "--repo",
+      join(root, "nested"),
+      "--policy",
+      "apply-safe",
+      "--json",
+    ]);
+    expect(result.code).toBe(1);
+    expect(jsonBody(result.stdout).result?.mode).toBe("read-only");
+    expect(await readFile(join(root, "note.ts"), "utf8")).toContain("<<<<<<<");
+  });
+
+  it("does not call a protected path eligible when writes are off", async () => {
+    const root = await structuralConflict(["note.ts"]);
+    await mkdir(join(root, ".smartmerge"));
+    await writeFile(
+      join(root, ".smartmerge", "policy.json"),
+      JSON.stringify({ protectedPaths: ["*.ts"] }),
+    );
+    const result = await runCli(root, ["ci", "--json"]);
+    expect(result.code).toBe(1);
+    const body = jsonBody(result.stdout);
+    expect(body.result?.eligible).toBe(0);
+    expect(JSON.stringify(body.result?.files)).toContain("protected");
+  });
+
+  it("does not call files past the limit eligible when writes are off", async () => {
+    const root = await structuralConflict(["note.ts", "other.ts"]);
+    await mkdir(join(root, ".smartmerge"));
+    await writeFile(
+      join(root, ".smartmerge", "policy.json"),
+      JSON.stringify({ maxFilesPerRun: 1 }),
+    );
+    const result = await runCli(root, ["ci", "--json"]);
+    expect(result.code).toBe(1);
+    const body = jsonBody(result.stdout);
+    expect(body.result?.eligible).toBe(1);
+    expect(JSON.stringify(body.result?.files)).toContain("file limit");
+  });
+
+  it("installs at the Git root and refuses a path that is not a repository", async () => {
+    const root = await cleanRepo();
+    await mkdir(join(root, "nested"));
+    const installed = await runCli(root, [
+      "agents",
+      "install",
+      "--repo",
+      join(root, "nested"),
+      "--json",
+    ]);
+    expect(installed.code).toBe(0);
+    expect(await readFile(join(root, "AGENTS.md"), "utf8")).toContain("list_conflicts");
+    await expect(access(join(root, "nested", "AGENTS.md"))).rejects.toThrow();
+    const missing = await runCli(root, [
+      "agents",
+      "install",
+      "--repo",
+      join(root, "missing"),
+      "--json",
+    ]);
+    expect(missing.code).toBe(2);
+    expect(jsonBody(missing.stdout).error?.code).toBe("NOT_FOUND");
+    await expect(access(join(root, "missing"))).rejects.toThrow();
+  });
+
+  it("undo restores an overwritten AGENTS.md and removes a new skill file", async () => {
+    const root = await cleanRepo();
+    await writeFile(join(root, "AGENTS.md"), "keep me\n");
+    const installed = await runCli(root, ["agents", "install", "--json"]);
+    expect(installed.code).toBe(0);
+    const skill = join(root, ".smartmerge", "skills", "resolve-conflicts", "SKILL.md");
+    expect(await readFile(skill, "utf8")).toContain("name: resolve-conflicts");
+    const first = await runCli(root, ["undo", "--json"]);
+    expect(first.code).toBe(0);
+    expect(await readFile(join(root, "AGENTS.md"), "utf8")).toBe("keep me\n");
+    const second = await runCli(root, ["undo", "--json"]);
+    expect(second.code).toBe(0);
+    await expect(access(skill)).rejects.toThrow();
   });
 
   it("does not read a path that leaves the repository", async () => {

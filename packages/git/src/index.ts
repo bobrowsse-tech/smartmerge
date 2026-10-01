@@ -15,7 +15,9 @@ export {
   readAuditLog,
   readSessionLog,
   readWorkingBytes,
+  removeWorkingFile,
   restoreBackup,
+  snapshotWorkingFile,
   stageAtomic,
   writeAtomic,
 } from "./working-tree.js";
