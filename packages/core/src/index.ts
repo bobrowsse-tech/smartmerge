@@ -31,3 +31,4 @@ export {
   type PolicyDenial,
 } from "./policy.js";
 export { redactSecrets } from "./redact.js";
+export { REPLAY_CASES, replayPath, type ReplayCase } from "./corpus.js";
