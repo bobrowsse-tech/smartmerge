@@ -85,7 +85,8 @@ describe("agent quality gates", () => {
     expect(report.tokenBudget).toBeNull();
     expect(report.tokensPerHunk).toBeGreaterThan(0);
     expect(report.verificationCatchRate).toBe(1);
-  }, 120_000);
+    // The transcripts also typecheck. Windows needs more than two minutes for that.
+  }, 180_000);
 });
 
 function sample(overrides: Partial<AgentGateCounts>): AgentGateCounts {

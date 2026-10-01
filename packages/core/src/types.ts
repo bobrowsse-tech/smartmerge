@@ -43,6 +43,8 @@ export function checkTypes(input: {
   }
 }
 
+const libSourceFiles = new Map<string, ts.SourceFile>();
+
 function diagnose(fileName: string, source: string): TextDiagnostic[] {
   const options: ts.CompilerOptions = {
     strict: true,
@@ -60,9 +62,13 @@ function diagnose(fileName: string, source: string): TextDiagnostic[] {
   const files = new Map<string, string>([[fileName, source]]);
   const host: ts.CompilerHost = {
     getSourceFile(name, languageVersion) {
+      const cached = libSourceFiles.get(name);
+      if (cached !== undefined) return cached;
       const text = readVirtual(name, files, libDir);
       if (text === undefined) return undefined;
-      return ts.createSourceFile(name, text, languageVersion, true);
+      const parsed = ts.createSourceFile(name, text, languageVersion, true);
+      if (insideLib(name, libDir)) libSourceFiles.set(name, parsed);
+      return parsed;
     },
     getDefaultLibFileName: () => libFile,
     writeFile() {

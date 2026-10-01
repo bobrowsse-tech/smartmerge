@@ -1,7 +1,5 @@
 import type { Check, CheckKind, CheckStatus, Diagnostic, VerifyResult } from "@smartmerge/protocol";
-import { checkLint } from "./lint.js";
 import { parseSource, type ParseIssue, type ParsedSource } from "./parse.js";
-import { checkTypes } from "./types.js";
 
 /** Same cap the proposal strategies use when checks have not all run. */
 const UNCHECKED_CONFIDENCE = 0.8;
@@ -94,15 +92,22 @@ export async function verifyResolution(input: {
   projectRoot?: string;
 }): Promise<VerifyResult> {
   const languageId = input.languageId ?? "";
+  // Loaded only for a verify call, so daemon startup and proposals do not pay for the compiler.
+  const { checkTypes } = await import("./types.js");
   const types = checkTypes(input);
-  const lint = await checkLint({
-    path: input.path,
-    result: input.result,
-    current: input.current,
-    incoming: input.incoming,
-    trusted: input.trusted === true,
-    ...(input.projectRoot === undefined ? {} : { projectRoot: input.projectRoot }),
-  });
+  const lint =
+    input.trusted === true
+      ? await (
+          await import("./lint.js")
+        ).checkLint({
+          path: input.path,
+          result: input.result,
+          current: input.current,
+          incoming: input.incoming,
+          trusted: true,
+          ...(input.projectRoot === undefined ? {} : { projectRoot: input.projectRoot }),
+        })
+      : notRun("lint", "Project lint runs only in a trusted workspace.");
   const result = parseSource(languageId, input.result);
   const current = parseSource(languageId, input.current);
   const incoming = parseSource(languageId, input.incoming);
