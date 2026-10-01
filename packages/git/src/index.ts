@@ -1,5 +1,6 @@
 export {
   assertCorpusDestination,
+  fetchClonedConflicts,
   fetchConflictFiles,
   writeConflictFiles,
   type FetchedConflict,

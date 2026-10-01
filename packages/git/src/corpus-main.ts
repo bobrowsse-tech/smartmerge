@@ -1,18 +1,22 @@
 import { resolve } from "node:path";
-import { assertCorpusDestination, fetchConflictFiles, writeConflictFiles } from "./corpus.js";
+import {
+  assertCorpusDestination,
+  fetchClonedConflicts,
+  fetchConflictFiles,
+  writeConflictFiles,
+} from "./corpus.js";
 
-const usage = "Usage: tsx packages/git/src/corpus-main.ts --repo <path> --out <dir> [--limit <n>] [--name <label>]";
+const usage =
+  "Usage: tsx packages/git/src/corpus-main.ts (--repo <path> | --clone <url>) --out <dir> [--limit <n>] [--name <label>]";
 
 try {
   const args = parseArgs(process.argv.slice(2));
-  const repoRoot = resolve(args.repo);
   const outDir = resolve(args.out);
-  assertCorpusDestination(repoRoot, outDir);
-  const conflicts = await fetchConflictFiles({
-    repoRoot,
-    repository: args.name ?? repoRoot.split(/[\\/]/).filter((part) => part.length > 0).at(-1) ?? "repository",
-    limit: args.limit,
-  });
+  const repository = args.name ?? labelFrom(args.source);
+  const conflicts =
+    args.kind === "clone"
+      ? await fetchClonedConflicts(args.source, repository, args.limit)
+      : await readLocal(args.source, outDir, repository, args.limit);
   const file = await writeConflictFiles(outDir, conflicts);
   process.stderr.write(
     `Wrote ${String(conflicts.length)} conflicted files to ${file}. No calibration error was scored.\n`,
@@ -24,14 +28,32 @@ try {
 }
 
 interface FetchArgs {
-  repo: string;
+  kind: "repo" | "clone";
+  source: string;
   out: string;
   limit: number;
   name?: string;
 }
 
+async function readLocal(
+  repo: string,
+  outDir: string,
+  repository: string,
+  limit: number,
+): Promise<Awaited<ReturnType<typeof fetchConflictFiles>>> {
+  const repoRoot = resolve(repo);
+  assertCorpusDestination(repoRoot, outDir);
+  return fetchConflictFiles({ repoRoot, repository, limit });
+}
+
+function labelFrom(source: string): string {
+  const trimmed = source.replace(/\.git\/?$/, "");
+  return trimmed.split(/[\\/]/).filter((part) => part.length > 0).at(-1) ?? "repository";
+}
+
 function parseArgs(argv: readonly string[]): FetchArgs {
   let repo = "";
+  let clone = "";
   let out = "";
   let limit = 30;
   let name: string | undefined;
@@ -40,6 +62,9 @@ function parseArgs(argv: readonly string[]): FetchArgs {
     const value = argv[index + 1];
     if (flag === "--repo" && value !== undefined && !value.startsWith("--")) {
       repo = value;
+      index += 1;
+    } else if (flag === "--clone" && value !== undefined && !value.startsWith("--")) {
+      clone = value;
       index += 1;
     } else if (flag === "--out" && value !== undefined && !value.startsWith("--")) {
       out = value;
@@ -54,7 +79,11 @@ function parseArgs(argv: readonly string[]): FetchArgs {
       throw new Error("Unrecognized corpus fetch arguments.");
     }
   }
-  if (repo.length === 0 || out.length === 0) throw new Error("A repository and an output directory are required.");
+  if (out.length === 0 || (repo.length === 0 && clone.length === 0) || (repo.length > 0 && clone.length > 0)) {
+    throw new Error("Pass either a local repository or a clone source, and an output directory.");
+  }
   if (!Number.isInteger(limit)) throw new Error("The merge limit must be an integer from 1 to 500.");
-  return name === undefined ? { repo, out, limit } : { repo, out, limit, name };
+  const kind = clone.length > 0 ? "clone" : "repo";
+  const source = clone.length > 0 ? clone : repo;
+  return name === undefined ? { kind, source, out, limit } : { kind, source, out, limit, name };
 }

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { assertCorpusDestination, fetchConflictFiles, writeConflictFiles } from "./corpus.js";
+import { assertCorpusDestination, fetchClonedConflicts, fetchConflictFiles, writeConflictFiles } from "./corpus.js";
 
 const execFileAsync = promisify(execFile);
 const roots: string[] = [];
@@ -28,6 +28,16 @@ describe("fetchConflictFiles", () => {
     expect(conflict?.humanResult).toBe("resolved\n");
     expect(conflict?.hunks).toBe(1);
     expect(JSON.stringify(conflict)).not.toContain("ece");
+  });
+
+  it("clones a local repository, reads the conflict, and leaves the source untouched", async () => {
+    const root = await resolvedConflictRepo();
+    const before = await readFile(join(root, "file.ts"), "utf8");
+    const conflicts = await fetchClonedConflicts(root, "cloned", 10);
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]?.repository).toBe("cloned");
+    expect(conflicts[0]?.humanResult).toBe("resolved\n");
+    expect(await readFile(join(root, "file.ts"), "utf8")).toBe(before);
   });
 
   it("returns nothing when every merge is clean", async () => {

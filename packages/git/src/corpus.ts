@@ -1,5 +1,6 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { parseConflictHunks } from "@smartmerge/core";
 import { git } from "./run.js";
 
@@ -68,6 +69,25 @@ export async function fetchConflictFiles(
     found.push(...batch);
   }
   return found;
+}
+
+/**
+ * Clone into a temporary directory, read its conflicted files, and delete the clone.
+ * The caller supplies the source. This does not score calibration.
+ */
+export async function fetchClonedConflicts(
+  source: string,
+  repository: string,
+  limit: number,
+): Promise<FetchedConflict[]> {
+  const parent = await mkdtemp(join(tmpdir(), "smartmerge-corpus-clone-"));
+  try {
+    const destination = join(parent, "repo");
+    await git(parent, ["clone", "--quiet", "--no-local", "--no-tags", source, destination]);
+    return await fetchConflictFiles({ repoRoot: destination, repository, limit });
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
 }
 
 /**
