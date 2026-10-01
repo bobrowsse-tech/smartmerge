@@ -4,6 +4,8 @@ import type { ErrorCode } from "@smartmerge/protocol";
 export class ToolFailure extends Error {
   readonly code: ErrorCode;
   readonly hint?: string;
+  /** Set after the failure has been written to the local audit log. */
+  audited = false;
 
   constructor(code: ErrorCode, message: string, hint?: string) {
     super(message);

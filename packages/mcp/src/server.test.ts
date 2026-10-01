@@ -62,7 +62,7 @@ describe("MCP server", () => {
         openWorldHint: false,
       });
     }
-    for (const name of ["apply_resolution", "apply_all_safe", "undo"]) {
+    for (const name of ["apply_resolution", "apply_all_safe"]) {
       const tool = listed.tools.find((item) => item.name === name);
       expect(tool?.annotations).toMatchObject({
         readOnlyHint: false,
@@ -71,6 +71,12 @@ describe("MCP server", () => {
         openWorldHint: false,
       });
     }
+    expect(listed.tools.find((item) => item.name === "undo")?.annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: false,
+    });
     const prompt = await client.getPrompt({ name: "resolve_conflicts_safely" });
     const text = JSON.stringify(prompt);
     expect(text).toContain("untrusted");
@@ -186,6 +192,7 @@ describe("MCP server", () => {
     const preview = await call(client, "apply_all_safe", { dryRun: true });
     expect(preview.body.result?.dryRun).toBe(true);
     expect(preview.body.result?.hunks?.length).toBe(2);
+    expect(JSON.stringify(preview.body.result?.hunks)).toContain('"untrusted":true');
     expect(await readFile(join(root, "note.ts"), "utf8")).toContain("<<<<<<<");
     const applied = await call(client, "apply_all_safe", {});
     expect(applied.isError).toBe(false);
@@ -206,6 +213,30 @@ describe("MCP server", () => {
     const audit = await readFile(join(root, ".git", "smartmerge", "audit.jsonl"), "utf8");
     expect(audit).toContain("review-bot");
     expect(audit).not.toContain("http://");
+  });
+
+  it("restores a custom-text edit and audits a rejected apply", async () => {
+    const root = await structuralConflict(["note.ts"]);
+    const client = await connect(root, { ...applySafe, mode: "apply-any" });
+    const proposed = await call(client, "propose_resolutions", { path: "note.ts" });
+    const hunkId = proposed.body.result?.proposals?.[0]?.hunkId;
+    if (hunkId === undefined) throw new Error("expected a hunk");
+    const rejected = await call(client, "apply_resolution", { path: "note.ts", hunkId });
+    expect(rejected.body.error?.code).toBe("INVALID_INPUT");
+    const applied = await call(client, "apply_resolution", {
+      path: "note.ts",
+      hunkId,
+      resultText: "function alpha() { return 2; }\nfunction beta() { return 1; }\n",
+    });
+    expect(applied.isError).toBe(false);
+    expect(await readFile(join(root, "note.ts"), "utf8")).not.toContain("<<<<<<<");
+    const undone = await call(client, "undo", {});
+    expect(undone.body.result?.restored).toBe(true);
+    expect(await readFile(join(root, "note.ts"), "utf8")).toContain("<<<<<<<");
+    const log = await call(client, "session_log", { limit: 50 });
+    const text = JSON.stringify(log.body.result);
+    expect(text).toContain('"untrusted":true');
+    expect(log.body.result?.entries?.some((entry) => entry.outcome === "error")).toBe(true);
   });
 
   it("marks conflict text as untrusted and redacts a token", async () => {

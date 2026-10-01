@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type {
   Candidate,
   ConflictFile,
@@ -125,8 +126,8 @@ export function buildConflict(file: ConflictSource, operation: OperationContext)
       ? []
       : parseConflictHunks(file.text).map((hunk) => {
           const resolved = resolveBase(file, hunk);
-          // The path keeps two files that conflict on the same line from sharing an id.
-          const id = `${file.path}#${hunk.id}`;
+          // A digest keeps two files distinct without putting the file name in the id.
+          const id = `${pathDigest(file.path)}:${hunk.id}`;
           if (resolved.known) knownBaseHunkIds.push(id);
           const swapped = operation.operation === "rebase";
           return {
@@ -193,6 +194,10 @@ export function defaultConfig(): SmartMergeConfig {
     backups: { retentionDays: 30 },
     telemetry: { enabled: false },
   };
+}
+
+function pathDigest(path: string): string {
+  return createHash("sha256").update(path).digest("hex").slice(0, 16);
 }
 
 function stubCandidate(hunk: ConflictHunk, strategy: StrategyId, result: string): Candidate {

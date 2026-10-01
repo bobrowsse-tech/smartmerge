@@ -315,7 +315,9 @@ async function undoLast(
   );
   const applied = log.filter(
     (entry) =>
-      (entry.action === "accepted" || entry.action === "auto-applied") &&
+      (entry.action === "accepted" ||
+        entry.action === "edited" ||
+        entry.action === "auto-applied") &&
       !undone.has(entry.backupId),
   );
   const target =

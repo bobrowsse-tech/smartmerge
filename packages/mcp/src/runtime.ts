@@ -171,7 +171,17 @@ export class MergeRuntime {
       try {
         return await fn();
       } catch (error) {
-        if (error instanceof ToolFailure) throw error;
+        if (error instanceof ToolFailure) {
+          if (!error.audited) {
+            await this.audit(
+              tool,
+              error.code === "POLICY_BLOCKED" ? "blocked" : "error",
+              error.message,
+            );
+            error.audited = true;
+          }
+          throw error;
+        }
         const failure = failureFromDaemon(error);
         await this.audit(
           tool,
@@ -443,7 +453,16 @@ export class MergeRuntime {
         path,
         located.hunk.id,
       );
-      return { applied: false, dryRun: true, path, hunkId: located.hunk.id, candidateId };
+      const redactions = { count: 0 };
+      const hidden = conceal(path, redactions);
+      return {
+        applied: false,
+        dryRun: true,
+        path: hidden,
+        hunkId: located.hunk.id,
+        candidateId,
+        redactions: redactions.count,
+      };
     }
     const acted = await client.act(
       session.sessionId,
@@ -459,11 +478,14 @@ export class MergeRuntime {
     this.filesWritten.add(path);
     await this.audit("apply_resolution", "ok", "Applied a candidate.", path, located.hunk.id);
     const entry = acted.log[0];
+    const redactions = { count: 0 };
+    const hidden = conceal(path, redactions);
     return {
       applied: true,
-      path,
+      path: hidden,
       hunkId: located.hunk.id,
       candidateId,
+      redactions: redactions.count,
       ...(entry !== undefined ? { backupId: entry.backupId } : {}),
     };
   }
@@ -506,7 +528,15 @@ export class MergeRuntime {
         path,
         located.hunk.id,
       );
-      return { applied: false, dryRun: true, path, hunkId: located.hunk.id };
+      const redactions = { count: 0 };
+      const hidden = conceal(path, redactions);
+      return {
+        applied: false,
+        dryRun: true,
+        path: hidden,
+        hunkId: located.hunk.id,
+        redactions: redactions.count,
+      };
     }
     const acted = await client.act(
       session.sessionId,
@@ -522,10 +552,13 @@ export class MergeRuntime {
     this.filesWritten.add(path);
     await this.audit("apply_resolution", "ok", "Applied custom text.", path, located.hunk.id);
     const entry = acted.log[0];
+    const redactions = { count: 0 };
+    const hidden = conceal(path, redactions);
     return {
       applied: true,
-      path,
+      path: hidden,
       hunkId: located.hunk.id,
+      redactions: redactions.count,
       ...(entry !== undefined ? { backupId: entry.backupId } : {}),
     };
   }
@@ -574,9 +607,11 @@ export class MergeRuntime {
         planned.push({ path, hunkId: hunk.id, candidateId });
       }
     }
+    const redactions = { count: 0 };
     if (input.dryRun === true) {
       await this.audit("apply_all_safe", "ok", `Dry run for ${String(planned.length)} hunk(s).`);
-      return { applied: false, dryRun: true, hunks: planned };
+      const hunks = presentWrites(planned, redactions);
+      return { applied: false, dryRun: true, redactions: redactions.count, hunks };
     }
     const applied: Array<{ path: string; hunkId: string; candidateId: string; backupId?: string }> =
       [];
@@ -593,7 +628,8 @@ export class MergeRuntime {
     }
     this.session = null;
     await this.audit("apply_all_safe", "ok", `Applied ${String(applied.length)} hunk(s).`);
-    return { applied: applied.length > 0, hunks: applied };
+    const hunks = presentWrites(applied, redactions);
+    return { applied: applied.length > 0, redactions: redactions.count, hunks };
   }
 
   private async undoInner(input: UndoInput): Promise<unknown> {
@@ -628,9 +664,16 @@ export class MergeRuntime {
     const entry = acted.log[0];
     if (!entry) throw new ToolFailure("INTERNAL", "Undo did not record a log entry.");
     this.session = null;
-    this.filesWritten.delete(entry.path);
     await this.audit("undo", "ok", "Restored a backup.", entry.path, entry.hunkId);
-    return { restored: true, path: entry.path, backupId: entry.backupId, entryId: entry.id };
+    const redactions = { count: 0 };
+    const hidden = conceal(entry.path, redactions);
+    return {
+      restored: true,
+      path: hidden,
+      backupId: entry.backupId,
+      entryId: entry.id,
+      redactions: redactions.count,
+    };
   }
 
   private async explainInner(input: {
@@ -670,10 +713,13 @@ export class MergeRuntime {
     const offset = pageOffset(input.cursor);
     const page = records.slice(offset, offset + limit);
     const next = offset + page.length < records.length ? String(offset + page.length) : undefined;
+    const redactions = { count: 0 };
+    const entries = page.map((record) => presentAudit(record, redactions));
     await this.audit("session_log", "ok", "Returned the audit log.");
     return {
       notice: UNTRUSTED_NOTICE,
-      entries: page,
+      redactions: redactions.count,
+      entries,
       ...(next !== undefined ? { nextCursor: next } : {}),
     };
   }
@@ -782,10 +828,12 @@ export class MergeRuntime {
     const path = repoRelativePath(this.repoRoot, input);
     if (path === null) {
       await this.audit(tool, "blocked", "That path is outside the repository.");
-      throw new ToolFailure(
-        "POLICY_BLOCKED",
-        "That path is outside the repository.",
-        "Use a path relative to the repository root.",
+      throw audited(
+        new ToolFailure(
+          "POLICY_BLOCKED",
+          "That path is outside the repository.",
+          "Use a path relative to the repository root.",
+        ),
       );
     }
     return path;
@@ -798,7 +846,7 @@ export class MergeRuntime {
     hunkId?: string,
   ): Promise<never> {
     await this.audit(tool, "blocked", decision.message, path, hunkId);
-    throw new ToolFailure("POLICY_BLOCKED", decision.message, decision.hint);
+    throw audited(new ToolFailure("POLICY_BLOCKED", decision.message, decision.hint));
   }
 
   private async audit(
@@ -820,6 +868,36 @@ export class MergeRuntime {
     if (hunkId !== undefined) record.hunkId = hunkId;
     await appendAuditRecord(this.repoRoot, record);
   }
+}
+
+function audited(failure: ToolFailure): ToolFailure {
+  failure.audited = true;
+  return failure;
+}
+
+function presentWrites(
+  items: ReadonlyArray<{ path: string; hunkId: string; candidateId: string; backupId?: string }>,
+  redactions: { count: number },
+): unknown[] {
+  return items.map((item) => ({
+    path: conceal(item.path, redactions),
+    hunkId: item.hunkId,
+    candidateId: item.candidateId,
+    ...(item.backupId !== undefined ? { backupId: item.backupId } : {}),
+  }));
+}
+
+function presentAudit(record: AuditRecord, redactions: { count: number }): unknown {
+  return {
+    id: record.id,
+    at: record.at,
+    actor: record.actor,
+    tool: record.tool,
+    outcome: record.outcome,
+    message: record.message,
+    ...(record.path !== undefined ? { path: conceal(record.path, redactions) } : {}),
+    ...(record.hunkId !== undefined ? { hunkId: conceal(record.hunkId, redactions) } : {}),
+  };
 }
 
 interface Located {
