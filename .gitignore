@@ -15,3 +15,6 @@ forbidden-names.json
 
 # Local build-kit archive. Not part of the product.
 smartmerge-build-kit.zip
+
+# Replay history fetched by script. Never commit it.
+corpus/fetched/
