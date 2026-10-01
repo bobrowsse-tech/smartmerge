@@ -71,4 +71,15 @@ describe("held-out repository split", () => {
   it("rejects a row without a repository", () => {
     expect(() => scoreHeldOut([{ confidence: 1, correct: true }])).toThrow(/repository/);
   });
+
+  it("treats surrounding whitespace as the same repository", () => {
+    const report = scoreHeldOut([
+      { repository: " only ", confidence: 0.99, correct: false },
+      { repository: "only", confidence: 1, correct: true },
+    ]);
+    expect(report.split.train).toEqual(["only"]);
+    expect(report.repositories).toBe(1);
+    expect(report.trainRows).toBe(2);
+    expect(report.measured).toBe(false);
+  });
 });

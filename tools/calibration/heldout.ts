@@ -16,7 +16,7 @@ export interface RepositoryOutcome {
   correct: boolean;
 }
 
-/** Which repositories were kept out of the scored set. */
+/** Repository names after the 70/15/15 assignment. Only `heldOut` is scored. */
 export interface RepositorySplit {
   train: readonly string[];
   validation: readonly string[];
@@ -121,11 +121,9 @@ function parseRows(input: unknown): RepositoryOutcome[] {
       throw new Error("Each held-out row must be an object.");
     }
     const record = item as Record<string, unknown>;
-    if (typeof record.repository !== "string" || record.repository.trim().length === 0) {
-      throw new Error("repository must be a non-empty string.");
-    }
-    if (record.repository.length > 200)
-      throw new Error("repository must be at most 200 characters.");
+    const repository = typeof record.repository === "string" ? record.repository.trim() : "";
+    if (repository.length === 0) throw new Error("repository must be a non-empty string.");
+    if (repository.length > 200) throw new Error("repository must be at most 200 characters.");
     if (typeof record.correct !== "boolean") throw new Error("correct must be a boolean.");
     if (
       typeof record.confidence !== "number" ||
@@ -136,7 +134,7 @@ function parseRows(input: unknown): RepositoryOutcome[] {
       throw new Error("Confidence must be a number from 0 to 1.");
     }
     return {
-      repository: record.repository,
+      repository,
       confidence: record.confidence,
       correct: record.correct,
     };
