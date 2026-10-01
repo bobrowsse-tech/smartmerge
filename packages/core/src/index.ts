@@ -32,3 +32,21 @@ export {
 } from "./policy.js";
 export { redactSecrets } from "./redact.js";
 export { REPLAY_CASES, replayPath, type ReplayCase } from "./corpus.js";
+export {
+  CHANGE_CLASSES,
+  FEATURE_NAMES,
+  SCORING_L2,
+  candidateBand,
+  confidenceCap,
+  fitScoringModel,
+  parseScoringModel,
+  parseTrainingExamples,
+  scoreFeatures,
+  type ChangeClass,
+  type PlattScale,
+  type ScoreCheck,
+  type ScoreFeatures,
+  type ScoredConfidence,
+  type ScoringModel,
+  type TrainingExample,
+} from "./logistic.js";
