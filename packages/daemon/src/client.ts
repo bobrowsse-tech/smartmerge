@@ -86,12 +86,16 @@ export class DaemonClient {
   }
 }
 
-/** Spawn the daemon, run `task`, then shut the daemon down. */
-export async function withDaemon<T>(
-  repoRoot: string,
-  task: (client: DaemonClient) => Promise<T>,
-  options?: { scriptPath?: string },
-): Promise<T> {
+/** A daemon process kept open for more than one request. */
+export interface DaemonHandle {
+  client: DaemonClient;
+  /** Daemon stderr collected so far. */
+  stderr(): string;
+  close(): Promise<void>;
+}
+
+/** Spawn the daemon and leave it running until `close`. */
+export function openDaemon(repoRoot: string, options?: { scriptPath?: string }): DaemonHandle {
   const script = options?.scriptPath ?? fileURLToPath(new URL("./bin.js", import.meta.url));
   if (!existsSync(script)) {
     throw new Error(`Daemon is not built at ${script}. Run pnpm build.`);
@@ -115,29 +119,45 @@ export async function withDaemon<T>(
       resolve();
     });
   });
+  return {
+    client: new DaemonClient(connection),
+    stderr: () => Buffer.concat(stderrChunks).toString("utf8").trim(),
+    close: async () => {
+      if (child.exitCode === null && child.signalCode === null) {
+        try {
+          await connection.sendRequest(shutdownRequest);
+        } catch {
+          // The process is stopped below whether or not shutdown was acknowledged.
+        }
+        child.kill();
+      }
+      await Promise.race([
+        exited,
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, 500);
+        }),
+      ]);
+      connection.dispose();
+    },
+  };
+}
+
+/** Spawn the daemon, run `task`, then shut the daemon down. */
+export async function withDaemon<T>(
+  repoRoot: string,
+  task: (client: DaemonClient) => Promise<T>,
+  options?: { scriptPath?: string },
+): Promise<T> {
+  const handle = openDaemon(repoRoot, options);
   try {
-    return await task(new DaemonClient(connection));
+    return await task(handle.client);
   } catch (error) {
-    const stderr = Buffer.concat(stderrChunks).toString("utf8").trim();
+    const stderr = handle.stderr();
     if (stderr.length > 0 && error instanceof Error) {
       error.message = `${error.message}\n${stderr}`;
     }
     throw error;
   } finally {
-    if (child.exitCode === null && child.signalCode === null) {
-      try {
-        await connection.sendRequest(shutdownRequest);
-      } catch {
-        // The process is stopped below whether or not shutdown was acknowledged.
-      }
-      child.kill();
-    }
-    await Promise.race([
-      exited,
-      new Promise<void>((resolve) => {
-        setTimeout(resolve, 500);
-      }),
-    ]);
-    connection.dispose();
+    await handle.close();
   }
 }

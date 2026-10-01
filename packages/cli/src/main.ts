@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { defaultConfig } from "@smartmerge/core";
+import { startStdioMcp } from "@smartmerge/mcp";
+import type { AgentPolicy } from "@smartmerge/protocol";
 import { applyFile, undoApply } from "./act.js";
 import { CommandFailure, failureFromMessage, writeError, writeResult } from "./failure.js";
 import { proposeJson, readResultText, resolveJson, statusJson, verifyFile } from "./machine.js";
@@ -18,7 +21,8 @@ const usage =
   "       smart-merge mergetool <base> <local> <remote> <merged>\n" +
   "       smart-merge install-mergetool [--repo <path>]\n" +
   "       smart-merge apply <file> [--hunk <id>] [--candidate <id>] [--accept-hazardous] [--json] [--repo <path>]\n" +
-  "       smart-merge undo [--json] [--repo <path>]\n";
+  "       smart-merge undo [--json] [--repo <path>]\n" +
+  "       smart-merge mcp [--policy <mode>] [--actor <name>] [--repo <path>]\n";
 
 const wantsJson = args.includes("--json");
 
@@ -31,7 +35,8 @@ if (
   command !== "resolve" &&
   command !== "mergetool" &&
   command !== "install-mergetool" &&
-  command !== "ui"
+  command !== "ui" &&
+  command !== "mcp"
 ) {
   if (wantsJson) writeError(new CommandFailure(2, "INVALID_INPUT", "Unknown command."));
   else process.stderr.write(usage);
@@ -39,6 +44,15 @@ if (
 }
 
 try {
+  if (command === "mcp") {
+    const parsed = parseMcpArgs(args.slice(1));
+    await startStdioMcp({
+      repoRoot: parsed.repo,
+      ...(parsed.actor !== undefined ? { actorName: parsed.actor } : {}),
+      ...(parsed.policy !== undefined ? { userPolicy: parsed.policy } : {}),
+    });
+    process.exit(0);
+  }
   if (command === "mergetool") {
     const [base, local, remote, merged, extra] = args.slice(1);
     if (
@@ -237,6 +251,49 @@ function parseArgs(command: string, args: string[]): ParsedArgs {
   if (resultFile !== undefined) parsed.resultFile = resultFile;
   if (compact) parsed.compact = true;
   if (acceptHazardous) parsed.acceptHazardous = true;
+  return parsed;
+}
+
+function parseMcpArgs(args: string[]): {
+  repo: string;
+  actor?: string;
+  policy?: AgentPolicy;
+} {
+  let repo = process.cwd();
+  let actor: string | undefined;
+  let mode: AgentPolicy["mode"] | undefined;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--repo" || arg === "--actor" || arg === "--policy") {
+      const next = args[index + 1];
+      if (next === undefined || next.startsWith("--")) {
+        throw new Error(`Missing value after ${arg}`);
+      }
+      if (arg === "--repo") repo = next;
+      else if (arg === "--actor") actor = next;
+      else {
+        if (
+          next !== "read-only" &&
+          next !== "propose-and-verify" &&
+          next !== "apply-safe" &&
+          next !== "apply-any"
+        ) {
+          throw new Error(
+            "Policy must be read-only, propose-and-verify, apply-safe, or apply-any.",
+          );
+        }
+        mode = next;
+      }
+      index += 1;
+      continue;
+    }
+    throw new Error(`Unknown argument: ${arg ?? ""}`);
+  }
+  const parsed: { repo: string; actor?: string; policy?: AgentPolicy } = { repo };
+  if (actor !== undefined) parsed.actor = actor;
+  if (mode !== undefined) {
+    parsed.policy = { ...defaultConfig().agent, mode };
+  }
   return parsed;
 }
 

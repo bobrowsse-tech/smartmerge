@@ -98,6 +98,7 @@ interface AgentPolicy {
 - Hazardous candidates are never applied by an agent without `acceptHazardous` **and** `apply-any`.
 - Every write is backed up and attributed to an `actor` (`human`, `agent:<name>`, `ci`).
 - Policy file: `.smartmerge/policy.json` in the repo (reviewable, version-controlled) or user config; repo policy can only tighten, never loosen, user policy.
+- User policy for the MCP server is the built-in default unless the process is started with `smart-merge mcp --policy <mode>`. Tool arguments cannot change the mode or the actor kind. A repository policy file can only tighten that choice. Protected paths are never written by an agent, including an explicit apply. See decision 0005.
 
 ## Safety against prompt injection and misuse
 

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
-import type { SessionLogEntry } from "@smartmerge/protocol";
+import type { AuditRecord, SessionLogEntry } from "@smartmerge/protocol";
 import { git } from "./run.js";
 
 /**
@@ -80,6 +80,40 @@ export async function appendSessionLog(repoRoot: string, entry: SessionLogEntry)
   }
 }
 
+/** Append one audit record under `.git/smartmerge/audit.jsonl`. The file stays on this machine. */
+export async function appendAuditRecord(repoRoot: string, record: AuditRecord): Promise<void> {
+  const gitDir = await gitDirectory(repoRoot);
+  const dir = resolve(gitDir, "smartmerge");
+  await mkdir(dir, { recursive: true });
+  const handle = await open(resolve(dir, "audit.jsonl"), "a");
+  try {
+    await handle.write(`${JSON.stringify(record)}\n`);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+/** Read the local audit log. A missing file is an empty list. */
+export async function readAuditLog(repoRoot: string): Promise<AuditRecord[]> {
+  const gitDir = await gitDirectory(repoRoot);
+  let text: string;
+  try {
+    text = await readFile(resolve(gitDir, "smartmerge", "audit.jsonl"), "utf8");
+  } catch (error) {
+    if (isNotFound(error)) return [];
+    throw error;
+  }
+  const records: AuditRecord[] = [];
+  for (const line of text.split("\n")) {
+    if (line.length === 0) continue;
+    const value: unknown = JSON.parse(line);
+    if (!isAuditRecord(value)) throw new Error("Audit record is invalid");
+    records.push(value);
+  }
+  return records;
+}
+
 /** Read the on-disk session log. A missing log is an empty list. */
 export async function readSessionLog(repoRoot: string): Promise<SessionLogEntry[]> {
   const gitDir = await gitDirectory(repoRoot);
@@ -98,6 +132,29 @@ export async function readSessionLog(repoRoot: string): Promise<SessionLogEntry[
     entries.push(value);
   }
   return entries;
+}
+
+function isAuditRecord(value: unknown): value is AuditRecord {
+  if (typeof value !== "object" || value === null) return false;
+  if (!("id" in value) || !("at" in value) || !("actor" in value) || !("tool" in value)) {
+    return false;
+  }
+  if (!("outcome" in value) || !("message" in value)) return false;
+  const outcome = value.outcome;
+  return (
+    typeof value.id === "string" &&
+    typeof value.at === "string" &&
+    typeof value.tool === "string" &&
+    typeof value.message === "string" &&
+    (outcome === "ok" || outcome === "blocked" || outcome === "error") &&
+    isActor(value.actor)
+  );
+}
+
+function isActor(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || !("kind" in value)) return false;
+  if (value.kind === "human" || value.kind === "ci") return true;
+  return value.kind === "agent" && "name" in value && typeof value.name === "string";
 }
 
 function isLogEntry(value: unknown): value is SessionLogEntry {

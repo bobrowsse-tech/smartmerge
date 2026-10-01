@@ -125,10 +125,12 @@ export function buildConflict(file: ConflictSource, operation: OperationContext)
       ? []
       : parseConflictHunks(file.text).map((hunk) => {
           const resolved = resolveBase(file, hunk);
-          if (resolved.known) knownBaseHunkIds.push(hunk.id);
+          // The path keeps two files that conflict on the same line from sharing an id.
+          const id = `${file.path}#${hunk.id}`;
+          if (resolved.known) knownBaseHunkIds.push(id);
           const swapped = operation.operation === "rebase";
           return {
-            id: hunk.id,
+            id,
             range: hunk.range,
             base: resolved.base,
             current: swapped ? hunk.theirs : hunk.ours,

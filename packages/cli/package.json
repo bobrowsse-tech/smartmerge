@@ -31,7 +31,9 @@
     "ink-testing-library": "4.0.0"
   },
   "dependencies": {
+    "@smartmerge/core": "workspace:*",
     "@smartmerge/daemon": "workspace:*",
+    "@smartmerge/mcp": "workspace:*",
     "@smartmerge/protocol": "workspace:*",
     "@smartmerge/ui": "workspace:*",
     "ink": "7.1.1",

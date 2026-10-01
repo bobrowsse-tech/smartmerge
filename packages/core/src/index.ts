@@ -19,3 +19,15 @@ export { verifyParsed, verifyResolution } from "./verify.js";
 export { normalizeWhitespace } from "./whitespace.js";
 export { replaceHunk } from "./apply.js";
 export { llmPayloadPreview } from "./llm.js";
+export {
+  decideCandidate,
+  decideLlm,
+  decideWriteGate,
+  parsePolicyOverlay,
+  pathIsProtected,
+  repoRelativePath,
+  tightenPolicy,
+  type PolicyDecision,
+  type PolicyDenial,
+} from "./policy.js";
+export { redactSecrets } from "./redact.js";
