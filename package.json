@@ -13,6 +13,7 @@
     "typecheck": "tsc -b",
     "build": "turbo run build",
     "test": "turbo run test",
+    "test:tools": "vitest run --config vitest.config.ts tools",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

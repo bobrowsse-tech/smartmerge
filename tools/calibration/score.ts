@@ -9,16 +9,30 @@ export const ECE_LIMIT = 0.03;
 /** Equal-width bins on confidence from 0 to 1. */
 export const CALIBRATION_BINS = 10;
 
+/** Canonical confidence bands from the engine spec. */
+export const CONFIDENCE_BANDS = ["certain", "high", "medium", "low"] as const;
+
+/** One canonical confidence band. */
+export type ConfidenceBandName = (typeof CONFIDENCE_BANDS)[number];
+
 /** One held-out prediction. `confidence` is the probability the resolution was right. */
 export interface CalibrationOutcome {
   confidence: number;
   correct: boolean;
 }
 
+/** Calibration of one band. An empty band is not a measurement and does not fail the gate. */
+export interface BandCalibration {
+  band: ConfidenceBandName;
+  outcomes: number;
+  ece: number | null;
+  passes: boolean;
+}
+
 /** A calibration report. `ece` stays null until held-out outcomes exist. */
 export type CalibrationReport =
-  | { measured: false; outcomes: 0; ece: null; passes: false }
-  | { measured: true; outcomes: number; ece: number; passes: boolean };
+  | { measured: false; outcomes: 0; ece: null; passes: false; bands: [] }
+  | { measured: true; outcomes: number; ece: number; passes: boolean; bands: BandCalibration[] };
 
 /**
  * Expected calibration error.
@@ -53,14 +67,39 @@ export function expectedCalibrationError(
 }
 
 /**
+ * Map a confidence onto the canonical band.
+ * `certain` is at least 0.98, `high` is at least 0.90, `medium` is at least 0.60, and the rest is `low`.
+ */
+export function confidenceBand(confidence: number): ConfidenceBandName {
+  if (confidence >= 0.98) return "certain";
+  if (confidence >= 0.9) return "high";
+  if (confidence >= 0.6) return "medium";
+  return "low";
+}
+
+/**
  * Score held-out outcomes.
- * No outcomes means the gate is unmeasured. A measured error of 0.03 or more fails.
+ * No outcomes means the gate is unmeasured. Every populated band must stay under 0.03.
+ * A large calibrated band does not hide a failing one.
  */
 export function scoreCalibration(input: unknown): CalibrationReport {
   const outcomes = parseOutcomes(input);
-  if (outcomes.length === 0) return { measured: false, outcomes: 0, ece: null, passes: false };
-  const ece = expectedCalibrationError(outcomes);
-  return { measured: true, outcomes: outcomes.length, ece, passes: ece < ECE_LIMIT };
+  if (outcomes.length === 0) {
+    return { measured: false, outcomes: 0, ece: null, passes: false, bands: [] };
+  }
+  const bands = CONFIDENCE_BANDS.map((band) => {
+    const group = outcomes.filter((item) => confidenceBand(item.confidence) === band);
+    if (group.length === 0) return { band, outcomes: 0, ece: null, passes: true };
+    const ece = expectedCalibrationError(group);
+    return { band, outcomes: group.length, ece, passes: ece < ECE_LIMIT };
+  });
+  return {
+    measured: true,
+    outcomes: outcomes.length,
+    ece: expectedCalibrationError(outcomes),
+    passes: bands.every((band) => band.passes),
+    bands,
+  };
 }
 
 function parseOutcomes(input: unknown): CalibrationOutcome[] {

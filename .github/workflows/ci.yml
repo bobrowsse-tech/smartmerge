@@ -40,6 +40,8 @@ jobs:
       - run: pnpm typecheck
       - name: Test
         run: pnpm turbo run test --filter=!@smartmerge/daemon --filter=!@smartmerge/ui
+      - name: Tool tests
+        run: pnpm test:tools
       - name: Speed budgets
         run: pnpm turbo run test --filter=@smartmerge/daemon --filter=@smartmerge/ui
       - run: pnpm lint
