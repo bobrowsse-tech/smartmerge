@@ -1,6 +1,6 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { parseConflictHunks } from "@smartmerge/core";
 import { git } from "./run.js";
 
@@ -91,14 +91,38 @@ export async function fetchClonedConflicts(
 }
 
 /**
- * Refuse a destination inside the source repository so fetched history is not written back into it.
+ * Refuse a destination inside the source repository.
+ * When the destination is inside any repository, `conflicts.json` must be ignored.
  */
-export function assertCorpusDestination(repoRoot: string, outDir: string): void {
-  const root = resolve(repoRoot);
+export async function assertCorpusDestination(repoRoot: string | null, outDir: string): Promise<void> {
   const out = resolve(outDir);
-  const rel = relative(root, out);
-  if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) {
-    throw new Error("Write the corpus outside the source repository.");
+  if (repoRoot !== null) {
+    const rel = relative(resolve(repoRoot), out);
+    if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) {
+      throw new Error("Write the corpus outside the source repository.");
+    }
+  }
+  const top = await git(await existingAncestor(out), ["rev-parse", "--show-toplevel"], { allowFailure: true });
+  if (top.exitCode !== 0) return;
+  const ignored = await git(top.stdout.trim(), ["check-ignore", "--", resolve(out, "conflicts.json")], {
+    allowFailure: true,
+  });
+  if (ignored.exitCode !== 0) {
+    throw new Error("Write the corpus outside a repository, or into an ignored directory.");
+  }
+}
+
+async function existingAncestor(start: string): Promise<string> {
+  let current = resolve(start);
+  for (;;) {
+    try {
+      await access(current);
+      return current;
+    } catch {
+      const parent = dirname(current);
+      if (parent === current) return current;
+      current = parent;
+    }
   }
 }
 

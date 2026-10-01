@@ -1,3 +1,4 @@
+import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
   assertCorpusDestination,
@@ -13,10 +14,12 @@ try {
   const args = parseArgs(process.argv.slice(2));
   const outDir = resolve(args.out);
   const repository = args.name ?? labelFrom(args.source);
+  const sourceRoot = args.kind === "repo" || (await isDirectory(args.source)) ? resolve(args.source) : null;
+  await assertCorpusDestination(sourceRoot, outDir);
   const conflicts =
     args.kind === "clone"
       ? await fetchClonedConflicts(args.source, repository, args.limit)
-      : await readLocal(args.source, outDir, repository, args.limit);
+      : await fetchConflictFiles({ repoRoot: resolve(args.source), repository, limit: args.limit });
   const file = await writeConflictFiles(outDir, conflicts);
   process.stderr.write(
     `Wrote ${String(conflicts.length)} conflicted files to ${file}. No calibration error was scored.\n`,
@@ -35,15 +38,12 @@ interface FetchArgs {
   name?: string;
 }
 
-async function readLocal(
-  repo: string,
-  outDir: string,
-  repository: string,
-  limit: number,
-): Promise<Awaited<ReturnType<typeof fetchConflictFiles>>> {
-  const repoRoot = resolve(repo);
-  assertCorpusDestination(repoRoot, outDir);
-  return fetchConflictFiles({ repoRoot, repository, limit });
+async function isDirectory(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 function labelFrom(source: string): string {

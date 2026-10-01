@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
@@ -49,14 +50,22 @@ describe("fetchConflictFiles", () => {
   it("refuses to write the corpus inside the source repository", async () => {
     const root = await mkdtemp(join(tmpdir(), "smartmerge-corpus-"));
     roots.push(root);
-    expect(() => {
-      assertCorpusDestination(root, join(root, "out"));
-    }).toThrow(/outside the source repository/);
+    await expect(assertCorpusDestination(root, join(root, "out"))).rejects.toThrow(
+      /outside the source repository/,
+    );
     const out = await mkdtemp(join(tmpdir(), "smartmerge-corpus-out-"));
     roots.push(out);
-    assertCorpusDestination(root, out);
+    await assertCorpusDestination(root, out);
     const file = await writeConflictFiles(out, []);
     expect(await readFile(file, "utf8")).toBe("[]\n");
+  });
+
+  it("allows an ignored directory and refuses a tracked one", async () => {
+    const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+    await assertCorpusDestination(null, join(repo, "corpus", "fetched"));
+    await expect(assertCorpusDestination(null, join(repo, "packages", "git"))).rejects.toThrow(
+      /ignored directory/,
+    );
   });
 });
 
