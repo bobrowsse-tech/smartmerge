@@ -35,10 +35,19 @@ export function parseMeasureSources(input: unknown): MeasureSource[] {
  * Fetch conflicted files from each source.
  * A URL is cloned into a temporary directory and deleted. A local path is only read.
  */
+/** A URL or a `user@host:path` source is cloned. Anything else is a local repository path. */
+export function isCloneSource(source: string): boolean {
+  if (source.includes("://")) return true;
+  return /^[^\s@]+@[^\s:]+:\S+$/.test(source);
+}
+
 export async function collectMeasuredConflicts(
   sources: readonly MeasureSource[],
   limit: number,
 ): Promise<FetchedConflict[]> {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+    throw new Error("The merge limit must be an integer from 1 to 500.");
+  }
   const found: FetchedConflict[] = [];
   for (const source of sources) {
     found.push(...(await conflictsFromSource(source, limit)));
@@ -50,7 +59,7 @@ async function conflictsFromSource(
   source: MeasureSource,
   limit: number,
 ): Promise<FetchedConflict[]> {
-  if (source.source.includes("://")) {
+  if (isCloneSource(source.source)) {
     return await fetchClonedConflicts(source.source, source.name, limit);
   }
   try {

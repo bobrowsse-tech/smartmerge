@@ -9,6 +9,7 @@ export {
 } from "./corpus.js";
 export {
   collectMeasuredConflicts,
+  isCloneSource,
   parseMeasureSources,
   replayMeasuredConflicts,
   type MeasureSource,

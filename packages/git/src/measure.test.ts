@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   collectMeasuredConflicts,
+  isCloneSource,
   parseMeasureSources,
   replayMeasuredConflicts,
 } from "./measure.js";
@@ -37,6 +38,15 @@ describe("measure sources", () => {
 
   it("rejects an empty source list", () => {
     expect(() => parseMeasureSources([])).toThrow(/At least one source/);
+  });
+
+  it("rejects a merge limit before cloning and treats user@host:path as a clone source", async () => {
+    await expect(
+      collectMeasuredConflicts([{ name: "alpha", source: "git@example.com:org/repo.git" }], 0),
+    ).rejects.toThrow(/1 to 500/);
+    expect(isCloneSource("https://example.com/org/repo.git")).toBe(true);
+    expect(isCloneSource("git@example.com:org/repo.git")).toBe(true);
+    expect(isCloneSource("/tmp/smartmerge-local")).toBe(false);
   });
 });
 

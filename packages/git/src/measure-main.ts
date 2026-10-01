@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { assertCorpusDestination, writeCorpusJson } from "./corpus.js";
 import {
   collectMeasuredConflicts,
+  isCloneSource,
   parseMeasureSources,
   replayMeasuredConflicts,
 } from "./measure.js";
@@ -15,7 +16,7 @@ try {
   const parsed: unknown = JSON.parse(await readFile(resolve(args.file), "utf8"));
   const sources = parseMeasureSources(parsed);
   for (const source of sources) {
-    if (!source.source.includes("://"))
+    if (!isCloneSource(source.source))
       await assertCorpusDestination(resolve(source.source), outDir);
   }
   await assertCorpusDestination(null, outDir, "conflicts.json");
@@ -61,7 +62,8 @@ function parseArgs(argv: readonly string[]): MeasureArgs {
   if (file.length === 0 || out.length === 0) {
     throw new Error("A source list and an output directory are required.");
   }
-  if (!Number.isInteger(limit))
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
     throw new Error("The merge limit must be an integer from 1 to 500.");
+  }
   return { file, out, limit };
 }
