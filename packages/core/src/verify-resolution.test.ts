@@ -78,6 +78,30 @@ describe("verifyResolution", () => {
     expect(result.hazardous).toBe(false);
   });
 
+  it("fails a call that is only wrong once the surrounding declaration is included", async () => {
+    const fileText = [
+      "function f(n: number) {",
+      "  return n;",
+      "}",
+      "<<<<<<< HEAD",
+      "f(1);",
+      "=======",
+      "f(2);",
+      ">>>>>>> topic",
+    ].join("\n");
+    const result = await verifyResolution({
+      path: "file.ts",
+      languageId: "typescript",
+      result: 'f("bad");',
+      current: "f(1);",
+      incoming: "f(2);",
+      fileText,
+      hunkRange: { startLine: 4, endLine: 8 },
+    });
+    expect(result.checks.find((check) => check.kind === "types")?.status).toBe("fail");
+    expect(result.hazardous).toBe(true);
+  });
+
   it("leaves types unknown for a language without a type check", async () => {
     const result = await verifyResolution({
       path: "notes.txt",

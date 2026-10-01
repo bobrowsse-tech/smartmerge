@@ -58,7 +58,7 @@ Run on the _virtual result_ of each candidate. Layers, cheapest first, each retu
 
 Baseline diffing: run the same check on `ours` and `theirs` sides so pre-existing errors are not blamed on the candidate.
 
-Type checks use the bundled compiler on the candidate and both sides. They do not load a project program or project plugins. Project lint config is applied only when the caller marks the workspace trusted, and inline lint directives in the file are ignored because the file is untrusted. Otherwise the lint check stays unknown.
+Type checks use the bundled compiler on the candidate and both sides. When the conflict is a hunk inside a larger file, the check uses that file with the hunk replaced, so names declared outside the hunk stay visible. They do not load a project program or project plugins. Project lint config is applied only when initialization marked the workspace trusted, and inline lint directives in the file are ignored because the file is untrusted. Otherwise the lint check stays unknown.
 
 A candidate with any `fail` in syntax/symbols/types is marked `hazardous` and can never be auto-applied.
 

@@ -33,6 +33,12 @@ parentPort?.on("message", (message: WorkerRequest) => {
           result: message.result,
           current: message.current,
           incoming: message.incoming,
+          trusted: message.trusted,
+          ...(message.projectRoot === undefined ? {} : { projectRoot: message.projectRoot }),
+          ...(message.fileText === undefined ? {} : { fileText: message.fileText }),
+          ...(message.startLine === undefined || message.endLine === undefined
+            ? {}
+            : { hunkRange: { startLine: message.startLine, endLine: message.endLine } }),
         });
         if (cancelled.delete(message.jobId)) return;
         parentPort?.postMessage({ kind: "verified", jobId: message.jobId, result });
