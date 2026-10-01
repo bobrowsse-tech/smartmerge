@@ -27,6 +27,8 @@ export interface FetchedConflict {
   incoming: string | null;
   /** File committed by the merge, or null when the merge removed it. */
   humanResult: string | null;
+  /** Replayed merge with conflict markers. This is the file a resolution is applied to. */
+  conflicted: string;
   /** Conflict regions in the replayed merge. */
   hunks: number;
 }
@@ -132,13 +134,26 @@ export async function writeConflictFiles(
   conflicts: readonly FetchedConflict[],
   repoRoot: string | null,
 ): Promise<string> {
+  return writeCorpusJson(outDir, "conflicts.json", conflicts, repoRoot);
+}
+
+/** Write a JSON file outside the source repository. The destination is checked again immediately before the write. */
+export async function writeCorpusJson(
+  outDir: string,
+  fileName: string,
+  value: unknown,
+  repoRoot: string | null,
+): Promise<string> {
+  if (fileName.length === 0 || fileName !== basename(fileName) || fileName.includes("..")) {
+    throw new Error("The corpus file name must be a single path segment.");
+  }
   await assertCorpusDestination(repoRoot, outDir);
   const destination = await canonicalPath(outDir);
   await mkdir(destination.full, { recursive: true });
   const created = await realpath(destination.full);
   await assertCorpusDestination(repoRoot, created);
-  const file = join(created, "conflicts.json");
-  await writeFile(file, `${JSON.stringify(conflicts, null, 2)}\n`, "utf8");
+  const file = join(created, fileName);
+  await writeFile(file, `${JSON.stringify(value, null, 2)}\n`, "utf8");
   return file;
 }
 
@@ -208,6 +223,7 @@ async function conflictsInMerge(
       current,
       incoming,
       humanResult,
+      conflicted,
       hunks,
     });
   }

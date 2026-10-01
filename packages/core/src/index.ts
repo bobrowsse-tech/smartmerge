@@ -33,6 +33,12 @@ export {
 export { redactSecrets } from "./redact.js";
 export { REPLAY_CASES, replayPath, type ReplayCase } from "./corpus.js";
 export {
+  replayConflicts,
+  type ReplayConflict,
+  type ReplayOutcome,
+  type ReplayReport,
+} from "./replay.js";
+export {
   CHANGE_CLASSES,
   FEATURE_NAMES,
   SCORING_L2,

@@ -3,6 +3,7 @@ export {
   fetchClonedConflicts,
   fetchConflictFiles,
   writeConflictFiles,
+  writeCorpusJson,
   type FetchedConflict,
   type FetchConflictsOptions,
 } from "./corpus.js";

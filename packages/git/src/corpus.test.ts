@@ -33,6 +33,9 @@ describe("fetchConflictFiles", () => {
     expect(conflict?.incoming).toBe("incoming\n");
     expect(conflict?.humanResult).toBe("resolved\n");
     expect(conflict?.hunks).toBe(1);
+    expect(conflict?.conflicted).toContain("<<<<<<<");
+    expect(conflict?.conflicted).toContain("current");
+    expect(conflict?.conflicted).toContain("incoming");
     expect(JSON.stringify(conflict)).not.toContain("ece");
   });
 
