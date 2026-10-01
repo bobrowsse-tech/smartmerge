@@ -17,7 +17,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "action.yml"
   ],
   "scripts": {
     "build": "tsc -b",
@@ -31,8 +32,10 @@
     "ink-testing-library": "4.0.0"
   },
   "dependencies": {
+    "@smartmerge/agent-kit": "workspace:*",
     "@smartmerge/core": "workspace:*",
     "@smartmerge/daemon": "workspace:*",
+    "@smartmerge/git": "workspace:*",
     "@smartmerge/mcp": "workspace:*",
     "@smartmerge/protocol": "workspace:*",
     "@smartmerge/ui": "workspace:*",

@@ -12,7 +12,9 @@
     { "path": "../protocol" },
     { "path": "../core" },
     { "path": "../daemon" },
+    { "path": "../git" },
     { "path": "../mcp" },
+    { "path": "../agent-kit" },
     { "path": "../ui" }
   ]
 }

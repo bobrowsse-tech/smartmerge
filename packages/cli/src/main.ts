@@ -1,8 +1,10 @@
 #!/usr/bin/env node
+import { installAgentKit } from "@smartmerge/agent-kit";
 import { defaultConfig } from "@smartmerge/core";
 import { startStdioMcp } from "@smartmerge/mcp";
 import type { AgentPolicy } from "@smartmerge/protocol";
 import { applyFile, undoApply } from "./act.js";
+import { runCi } from "./ci.js";
 import { CommandFailure, failureFromMessage, writeError, writeResult } from "./failure.js";
 import { proposeJson, readResultText, resolveJson, statusJson, verifyFile } from "./machine.js";
 import { runTerminal } from "./terminal.js";
@@ -22,7 +24,9 @@ const usage =
   "       smart-merge install-mergetool [--repo <path>]\n" +
   "       smart-merge apply <file> [--hunk <id>] [--candidate <id>] [--accept-hazardous] [--json] [--repo <path>]\n" +
   "       smart-merge undo [--json] [--repo <path>]\n" +
-  "       smart-merge mcp [--policy <mode>] [--actor <name>] [--repo <path>]\n";
+  "       smart-merge mcp [--policy <mode>] [--actor <name>] [--repo <path>]\n" +
+  "       smart-merge ci [--json] [--policy <mode>] [--dry-run] [--repo <path>]\n" +
+  "       smart-merge agents install [--json] [--repo <path>]\n";
 
 const wantsJson = args.includes("--json");
 
@@ -36,7 +40,9 @@ if (
   command !== "mergetool" &&
   command !== "install-mergetool" &&
   command !== "ui" &&
-  command !== "mcp"
+  command !== "mcp" &&
+  command !== "ci" &&
+  command !== "agents"
 ) {
   if (wantsJson) writeError(new CommandFailure(2, "INVALID_INPUT", "Unknown command."));
   else process.stderr.write(usage);
@@ -51,6 +57,28 @@ try {
       ...(parsed.actor !== undefined ? { actorName: parsed.actor } : {}),
       ...(parsed.policy !== undefined ? { userPolicy: parsed.policy } : {}),
     });
+    process.exit(0);
+  }
+  if (command === "ci") {
+    const parsed = parseCiArgs(args.slice(1));
+    const result = await runCi(parsed.repo, {
+      dryRun: parsed.dryRun,
+      ...(parsed.policy !== undefined ? { userPolicy: parsed.policy } : {}),
+    });
+    if (parsed.json) writeResult(result.result);
+    else {
+      const summary = result.result.wrote
+        ? `Applied ${String(result.result.applied)} resolution(s). ${String(result.result.remaining)} conflict(s) remain.\n`
+        : `Reported ${String(result.result.conflicts)} conflict(s). Nothing was written.\n`;
+      process.stdout.write(summary);
+    }
+    process.exit(result.code);
+  }
+  if (command === "agents") {
+    const parsed = parseAgentsArgs(args.slice(1));
+    const installed = await installAgentKit(parsed.repo);
+    if (parsed.json) writeResult(installed);
+    else process.stdout.write("Installed agent instructions in AGENTS.md and the skill file.\n");
     process.exit(0);
   }
   if (command === "mergetool") {
@@ -295,6 +323,89 @@ function parseMcpArgs(args: string[]): {
     parsed.policy = { ...defaultConfig().agent, mode };
   }
   return parsed;
+}
+
+function parseCiArgs(args: string[]): {
+  repo: string;
+  policy?: AgentPolicy;
+  dryRun: boolean;
+  json: boolean;
+} {
+  let repo = process.cwd();
+  let mode: AgentPolicy["mode"] | undefined;
+  let dryRun = false;
+  let json = false;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--json") {
+      json = true;
+      continue;
+    }
+    if (arg === "--dry-run") {
+      dryRun = true;
+      continue;
+    }
+    if (arg === "--repo" || arg === "--policy") {
+      const next = args[index + 1];
+      if (next === undefined || next.startsWith("--")) {
+        throw new CommandFailure(2, "INVALID_INPUT", `Missing value after ${arg}`);
+      }
+      if (arg === "--repo") repo = next;
+      else mode = parseMode(next);
+      index += 1;
+      continue;
+    }
+    throw new CommandFailure(2, "INVALID_INPUT", `Unknown argument: ${arg ?? ""}`);
+  }
+  const parsed: { repo: string; policy?: AgentPolicy; dryRun: boolean; json: boolean } = {
+    repo,
+    dryRun,
+    json,
+  };
+  if (mode !== undefined) parsed.policy = { ...defaultConfig().agent, mode };
+  return parsed;
+}
+
+function parseAgentsArgs(args: string[]): { repo: string; json: boolean } {
+  if (args[0] !== "install") {
+    throw new CommandFailure(2, "INVALID_INPUT", "Use smart-merge agents install.");
+  }
+  let repo = process.cwd();
+  let json = false;
+  for (let index = 1; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--json") {
+      json = true;
+      continue;
+    }
+    if (arg === "--repo") {
+      const next = args[index + 1];
+      if (next === undefined || next.startsWith("--")) {
+        throw new CommandFailure(2, "INVALID_INPUT", "Missing value after --repo");
+      }
+      repo = next;
+      index += 1;
+      continue;
+    }
+    throw new CommandFailure(2, "INVALID_INPUT", `Unknown argument: ${arg ?? ""}`);
+  }
+  return { repo, json };
+}
+
+function parseMode(value: string): AgentPolicy["mode"] {
+  if (
+    value === "read-only" ||
+    value === "propose-and-verify" ||
+    value === "apply-safe" ||
+    value === "apply-any"
+  ) {
+    return value;
+  }
+  throw new CommandFailure(
+    2,
+    "INVALID_INPUT",
+    "Policy must be read-only, propose-and-verify, apply-safe, or apply-any.",
+  );
 }
 
 function parseUiArgs(args: string[]): { repo: string; port: number; open: boolean } {
