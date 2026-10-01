@@ -2,4 +2,4 @@
 "@smartmerge/git": patch
 ---
 
-Add a command that reads resolved merge commits from a local repository and writes the conflicted files outside that repository. It does not score calibration and does not commit the files.
+Add a command that clones or reads a repository and writes the conflicted files outside it. A clone is deleted after it is read. The command does not score calibration and does not commit the files.
