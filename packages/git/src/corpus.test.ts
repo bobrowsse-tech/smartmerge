@@ -88,6 +88,7 @@ describe("fetchConflictFiles", () => {
   it("allows an ignored directory and refuses a tracked one", async () => {
     const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
     await assertCorpusDestination(null, join(repo, "corpus", "fetched"));
+    await assertCorpusDestination(null, join(repo, "corpus", "fetched"), "outcomes.json");
     await expect(assertCorpusDestination(null, join(repo, "packages", "git"))).rejects.toThrow(
       /ignored directory/,
     );
