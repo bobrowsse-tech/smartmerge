@@ -3,7 +3,6 @@
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "dist",
-    "jsx": "react-jsx",
     "types": ["node"]
   },
   "include": ["src"],
@@ -11,8 +10,7 @@
   "references": [
     { "path": "../protocol" },
     { "path": "../core" },
-    { "path": "../daemon" },
-    { "path": "../mcp" },
-    { "path": "../ui" }
+    { "path": "../git" },
+    { "path": "../daemon" }
   ]
 }

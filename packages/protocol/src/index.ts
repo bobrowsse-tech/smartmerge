@@ -314,7 +314,7 @@ export interface ConflictSession {
 
 export type UserAction =
   | { type: "accept"; hunkId: string; candidateId: string; acceptHazardous?: boolean }
-  | { type: "edit"; hunkId: string; text: string }
+  | { type: "edit"; hunkId: string; text: string; acceptHazardous?: boolean }
   | { type: "reject"; hunkId: string }
   | { type: "applyAllSafe"; minBand: ConfidenceBand }
   | { type: "undo"; entryId?: string }
@@ -330,6 +330,18 @@ export interface SessionLogEntry {
   candidateId?: string;
   strategy?: StrategyId;
   backupId: string;
+}
+
+/** One local audit line. This file never leaves the machine. */
+export interface AuditRecord {
+  id: string;
+  at: ISODateTime;
+  actor: Actor;
+  tool: string;
+  outcome: "ok" | "blocked" | "error";
+  message: string;
+  path?: RepoPath;
+  hunkId?: string;
 }
 
 /* ───────────── Configuration ───────────── */

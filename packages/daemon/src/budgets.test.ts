@@ -58,7 +58,8 @@ describe("speed budgets", () => {
       },
       { scriptPath: script },
     );
-    expect(elapsed).toBeLessThan(limit(500, 1500));
+    // The product budget stays 500 ms. Hosted Windows runners have measured about 1.6 s for this fixture.
+    expect(elapsed).toBeLessThan(limit(500, 2500));
   }, 60_000);
 
   it("proposes a checked result in under 300 ms and checks stay under 150 ms", async () => {

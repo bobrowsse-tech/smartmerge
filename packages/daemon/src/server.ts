@@ -200,6 +200,10 @@ export class DaemonServer {
       if (!this.config.autoApply.enabled) return { log: [], session };
       return { log: [], session };
     }
+    if (params.action.type === "edit") {
+      const entry = await this.edit(session, params.action, actor);
+      return { log: [entry], session };
+    }
     if (params.action.type !== "accept") {
       throw new ResponseError(
         ErrorCodes.InvalidParams,
@@ -250,6 +254,45 @@ export class DaemonServer {
     return entry;
   }
 
+  private async edit(
+    session: ConflictSession,
+    action: { hunkId: string; text: string; acceptHazardous?: boolean },
+    actor: Actor,
+  ): Promise<SessionLogEntry> {
+    if (action.text.length > 1_000_000) {
+      throw new ResponseError(ErrorCodes.InvalidParams, "Result text is too large.");
+    }
+    const located = locateHunk(session, action.hunkId);
+    const verified = await this.pool.verify(
+      {
+        path: located.path,
+        languageId: located.row.file.languageId,
+        result: action.text,
+        current: located.hunk.current,
+        incoming: located.hunk.incoming,
+      },
+      new AbortController().signal,
+    );
+    if (verified.hazardous && action.acceptHazardous !== true) {
+      throw new ResponseError(ErrorCodes.InvalidParams, "Refusing to apply a hazardous edit");
+    }
+    const backup = await backupWorkingFile(session.repoRoot, located.path);
+    const next = replaceHunk(backup.bytes.toString("utf8"), located.hunk.range, action.text);
+    await writeAtomic(resolveInside(session.repoRoot, located.path), Buffer.from(next, "utf8"));
+    const entry: SessionLogEntry = {
+      id: randomUUID(),
+      at: new Date().toISOString(),
+      actor,
+      path: located.path,
+      hunkId: action.hunkId,
+      action: "edited",
+      backupId: backup.id,
+    };
+    await appendSessionLog(session.repoRoot, entry);
+    located.row.status = next.includes("<<<<<<<") ? "pending" : "resolved";
+    return entry;
+  }
+
   private requireInitialized(): void {
     if (!this.initialized) {
       throw new ResponseError(ErrorCodes.ServerNotInitialized, "Call initialize first");
@@ -272,7 +315,9 @@ async function undoLast(
   );
   const applied = log.filter(
     (entry) =>
-      (entry.action === "accepted" || entry.action === "auto-applied") &&
+      (entry.action === "accepted" ||
+        entry.action === "edited" ||
+        entry.action === "auto-applied") &&
       !undone.has(entry.backupId),
   );
   const target =
@@ -294,6 +339,21 @@ async function undoLast(
   };
   await appendSessionLog(repoRoot, entry);
   return entry;
+}
+
+function locateHunk(
+  session: ConflictSession,
+  hunkId: string,
+): {
+  path: string;
+  row: ConflictSession["files"][number];
+  hunk: ConflictSession["files"][number]["file"]["hunks"][number];
+} {
+  for (const row of session.files) {
+    const hunk = row.file.hunks.find((item) => item.id === hunkId);
+    if (hunk) return { path: row.file.path, row, hunk };
+  }
+  throw new ResponseError(ErrorCodes.InvalidParams, `Unknown hunk ${hunkId}`);
 }
 
 function locateCandidate(
