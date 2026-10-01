@@ -18,8 +18,8 @@ Purpose: measure real-world precision, calibrate confidence, prevent regressions
 Construction:
 
 1. Select permissively licensed open-source repos across target languages.
-2. Find historical merge commits with conflicts: re-run `git merge-tree`/`git merge` of the two parents; if it conflicts, the committed merge result is the **human ground truth**.
-3. Store `(base, ours, theirs, human_result, language, metadata)` per hunk. Data is fetched by script, not committed (license hygiene).
+2. Find historical merge commits with conflicts: re-run `git merge-tree` of the two parents; if it conflicts, the committed merge result is the **human ground truth**.
+3. Store `(base, ours, theirs, human_result, language, metadata)` for each conflicted text file. `tsx packages/git/src/corpus-main.ts --repo <path> --out <dir>` reads a local repository and writes that JSON outside it. The committed file is the ground truth for the whole file; the command does not slice it into hunks. Data is fetched by script, not committed (license hygiene). The command does not score calibration.
 4. Split: 70% train (calibration), 15% validation, 15% held-out test. Split by repository, not by commit, to avoid leakage.
 
 Metrics on held-out test:

@@ -1,4 +1,11 @@
 export {
+  assertCorpusDestination,
+  fetchConflictFiles,
+  writeConflictFiles,
+  type FetchedConflict,
+  type FetchConflictsOptions,
+} from "./corpus.js";
+export {
   findRepoRoot,
   git,
   GitCommandError,
