@@ -14,13 +14,14 @@ try {
   const args = parseArgs(process.argv.slice(2));
   const outDir = resolve(args.out);
   const repository = args.name ?? labelFrom(args.source);
-  const sourceRoot = args.kind === "repo" || (await isDirectory(args.source)) ? resolve(args.source) : null;
+  const sourceRoot =
+    args.kind === "repo" || (await isDirectory(args.source)) ? resolve(args.source) : null;
   await assertCorpusDestination(sourceRoot, outDir);
   const conflicts =
     args.kind === "clone"
       ? await fetchClonedConflicts(args.source, repository, args.limit)
       : await fetchConflictFiles({ repoRoot: resolve(args.source), repository, limit: args.limit });
-  const file = await writeConflictFiles(outDir, conflicts);
+  const file = await writeConflictFiles(outDir, conflicts, sourceRoot);
   process.stderr.write(
     `Wrote ${String(conflicts.length)} conflicted files to ${file}. No calibration error was scored.\n`,
   );
@@ -48,7 +49,12 @@ async function isDirectory(path: string): Promise<boolean> {
 
 function labelFrom(source: string): string {
   const trimmed = source.replace(/\.git\/?$/, "");
-  return trimmed.split(/[\\/]/).filter((part) => part.length > 0).at(-1) ?? "repository";
+  return (
+    trimmed
+      .split(/[\\/]/)
+      .filter((part) => part.length > 0)
+      .at(-1) ?? "repository"
+  );
 }
 
 function parseArgs(argv: readonly string[]): FetchArgs {
@@ -79,10 +85,15 @@ function parseArgs(argv: readonly string[]): FetchArgs {
       throw new Error("Unrecognized corpus fetch arguments.");
     }
   }
-  if (out.length === 0 || (repo.length === 0 && clone.length === 0) || (repo.length > 0 && clone.length > 0)) {
+  if (
+    out.length === 0 ||
+    (repo.length === 0 && clone.length === 0) ||
+    (repo.length > 0 && clone.length > 0)
+  ) {
     throw new Error("Pass either a local repository or a clone source, and an output directory.");
   }
-  if (!Number.isInteger(limit)) throw new Error("The merge limit must be an integer from 1 to 500.");
+  if (!Number.isInteger(limit))
+    throw new Error("The merge limit must be an integer from 1 to 500.");
   const kind = clone.length > 0 ? "clone" : "repo";
   const source = clone.length > 0 ? clone : repo;
   return name === undefined ? { kind, source, out, limit } : { kind, source, out, limit, name };

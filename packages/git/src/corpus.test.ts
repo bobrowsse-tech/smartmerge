@@ -1,11 +1,16 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { assertCorpusDestination, fetchClonedConflicts, fetchConflictFiles, writeConflictFiles } from "./corpus.js";
+import {
+  assertCorpusDestination,
+  fetchClonedConflicts,
+  fetchConflictFiles,
+  writeConflictFiles,
+} from "./corpus.js";
 
 const execFileAsync = promisify(execFile);
 const roots: string[] = [];
@@ -56,8 +61,25 @@ describe("fetchConflictFiles", () => {
     const out = await mkdtemp(join(tmpdir(), "smartmerge-corpus-out-"));
     roots.push(out);
     await assertCorpusDestination(root, out);
-    const file = await writeConflictFiles(out, []);
+    const file = await writeConflictFiles(out, [], null);
     expect(await readFile(file, "utf8")).toBe("[]\n");
+  });
+
+  it("uses the git top-level and the real path of a symlink", async () => {
+    const root = await initRepo();
+    await mkdir(join(root, "nested"));
+    await mkdir(join(root, "inside"));
+    const outside = await mkdtemp(join(tmpdir(), "smartmerge-corpus-out-"));
+    roots.push(outside);
+    const linked = join(outside, "linked");
+    await symlink(join(root, "inside"), linked, "junction");
+    await expect(
+      assertCorpusDestination(join(root, "nested"), join(root, "elsewhere")),
+    ).rejects.toThrow(/outside the source repository/);
+    await expect(writeConflictFiles(linked, [], root)).rejects.toThrow(
+      /outside the source repository/,
+    );
+    await expect(readFile(join(root, "inside", "conflicts.json"), "utf8")).rejects.toThrow();
   });
 
   it("allows an ignored directory and refuses a tracked one", async () => {
@@ -130,7 +152,11 @@ async function initRepo(): Promise<string> {
   return root;
 }
 
-async function runGit(cwd: string, args: string[], allowed: readonly number[] = [0]): Promise<void> {
+async function runGit(
+  cwd: string,
+  args: string[],
+  allowed: readonly number[] = [0],
+): Promise<void> {
   try {
     await execFileAsync("git", args, {
       cwd,

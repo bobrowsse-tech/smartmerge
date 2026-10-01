@@ -1,6 +1,6 @@
-import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { parseConflictHunks } from "@smartmerge/core";
 import { git } from "./run.js";
 
@@ -61,7 +61,10 @@ export async function fetchConflictFiles(
     `--max-count=${String(options.limit)}`,
     "HEAD",
   ]);
-  const commits = listed.stdout.split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
+  const commits = listed.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
   const found: FetchedConflict[] = [];
   for (const commit of commits) {
     if (found.length >= MAX_FILES) break;
@@ -92,46 +95,70 @@ export async function fetchClonedConflicts(
 
 /**
  * Refuse a destination inside the source repository.
+ * The source is the Git top-level, and both paths are canonicalized so a symlink cannot point back into it.
  * When the destination is inside any repository, `conflicts.json` must be ignored.
  */
-export async function assertCorpusDestination(repoRoot: string | null, outDir: string): Promise<void> {
-  const out = resolve(outDir);
+export async function assertCorpusDestination(
+  repoRoot: string | null,
+  outDir: string,
+): Promise<void> {
+  const out = await canonicalPath(outDir);
   if (repoRoot !== null) {
-    const rel = relative(resolve(repoRoot), out);
+    const shown = await git(repoRoot, ["rev-parse", "--show-toplevel"], { allowFailure: true });
+    const root = await canonicalPath(shown.exitCode === 0 ? shown.stdout.trim() : repoRoot);
+    const rel = relative(root.full, out.full);
     if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) {
       throw new Error("Write the corpus outside the source repository.");
     }
   }
-  const top = await git(await existingAncestor(out), ["rev-parse", "--show-toplevel"], { allowFailure: true });
+  const top = await git(out.existing, ["rev-parse", "--show-toplevel"], { allowFailure: true });
   if (top.exitCode !== 0) return;
-  const ignored = await git(top.stdout.trim(), ["check-ignore", "--", resolve(out, "conflicts.json")], {
-    allowFailure: true,
-  });
+  const repo = await canonicalPath(top.stdout.trim());
+  const ignored = await git(
+    repo.existing,
+    ["check-ignore", "--", join(out.full, "conflicts.json")],
+    {
+      allowFailure: true,
+    },
+  );
   if (ignored.exitCode !== 0) {
     throw new Error("Write the corpus outside a repository, or into an ignored directory.");
   }
 }
 
-async function existingAncestor(start: string): Promise<string> {
-  let current = resolve(start);
+/** Write conflict records as JSON. The destination is checked again immediately before the write. */
+export async function writeConflictFiles(
+  outDir: string,
+  conflicts: readonly FetchedConflict[],
+  repoRoot: string | null,
+): Promise<string> {
+  await assertCorpusDestination(repoRoot, outDir);
+  const destination = await canonicalPath(outDir);
+  await mkdir(destination.full, { recursive: true });
+  const created = await realpath(destination.full);
+  await assertCorpusDestination(repoRoot, created);
+  const file = join(created, "conflicts.json");
+  await writeFile(file, `${JSON.stringify(conflicts, null, 2)}\n`, "utf8");
+  return file;
+}
+
+async function canonicalPath(start: string): Promise<{ existing: string; full: string }> {
+  const absolute = resolve(start);
+  const missing: string[] = [];
+  let current = absolute;
   for (;;) {
     try {
       await access(current);
-      return current;
+      const existing = await realpath(current);
+      const full = missing.length === 0 ? existing : join(existing, ...missing.reverse());
+      return { existing, full };
     } catch {
       const parent = dirname(current);
-      if (parent === current) return current;
+      if (parent === current) return { existing: absolute, full: absolute };
+      missing.push(basename(current));
       current = parent;
     }
   }
-}
-
-/** Write conflict records as JSON. This is not a calibration report. */
-export async function writeConflictFiles(outDir: string, conflicts: readonly FetchedConflict[]): Promise<string> {
-  await mkdir(outDir, { recursive: true });
-  const file = resolve(outDir, "conflicts.json");
-  await writeFile(file, `${JSON.stringify(conflicts, null, 2)}\n`, "utf8");
-  return file;
 }
 
 async function conflictsInMerge(
@@ -155,7 +182,9 @@ async function conflictsInMerge(
   if (replay.exitCode === 0) return [];
   const parsed = conflictedPaths(replay.stdout);
   if (parsed === null || parsed.paths.length === 0) return [];
-  const baseCommit = (await git(repoRoot, ["merge-base", first, second], { allowFailure: true })).stdout.trim();
+  const baseCommit = (
+    await git(repoRoot, ["merge-base", first, second], { allowFailure: true })
+  ).stdout.trim();
   const found: FetchedConflict[] = [];
   for (const path of parsed.paths) {
     if (found.length >= room) break;
@@ -207,10 +236,20 @@ async function showBlob(repoRoot: string, rev: string, path: string): Promise<st
 
 function languageFor(path: string): FetchedConflict["languageId"] | null {
   const lower = path.toLowerCase();
-  if (lower.endsWith(".ts") || lower.endsWith(".tsx") || lower.endsWith(".mts") || lower.endsWith(".cts")) {
+  if (
+    lower.endsWith(".ts") ||
+    lower.endsWith(".tsx") ||
+    lower.endsWith(".mts") ||
+    lower.endsWith(".cts")
+  ) {
     return "typescript";
   }
-  if (lower.endsWith(".js") || lower.endsWith(".jsx") || lower.endsWith(".mjs") || lower.endsWith(".cjs")) {
+  if (
+    lower.endsWith(".js") ||
+    lower.endsWith(".jsx") ||
+    lower.endsWith(".mjs") ||
+    lower.endsWith(".cjs")
+  ) {
     return "javascript";
   }
   return null;
