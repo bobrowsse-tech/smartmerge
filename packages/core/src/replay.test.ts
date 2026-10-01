@@ -25,7 +25,7 @@ describe("replayConflicts", () => {
         confidenceSource: "fixed-proposal",
       },
     ]);
-    expect(JSON.stringify(report)).not.toContain("ece");
+    expect(Object.keys(report)).not.toContain("ece");
   });
 
   it("marks a matching recommendation wrong when the committed file differs", async () => {

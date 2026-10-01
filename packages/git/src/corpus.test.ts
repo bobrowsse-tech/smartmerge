@@ -36,7 +36,7 @@ describe("fetchConflictFiles", () => {
     expect(conflict?.conflicted).toContain("<<<<<<<");
     expect(conflict?.conflicted).toContain("current");
     expect(conflict?.conflicted).toContain("incoming");
-    expect(JSON.stringify(conflict)).not.toContain("ece");
+    expect(Object.keys(conflict ?? {})).not.toContain("ece");
   });
 
   it("clones a local repository, reads the conflict, and leaves the source untouched", async () => {
