@@ -38,7 +38,10 @@ jobs:
       - name: Install the panel browser
         run: pnpm --filter @smartmerge/ui exec playwright install --with-deps chromium
       - run: pnpm typecheck
-      - run: pnpm test
+      - name: Test
+        run: pnpm turbo run test --filter=!@smartmerge/daemon --filter=!@smartmerge/ui
+      - name: Speed budgets
+        run: pnpm turbo run test --filter=@smartmerge/daemon --filter=@smartmerge/ui
       - run: pnpm lint
       - run: pnpm format:check
 

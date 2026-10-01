@@ -1,5 +1,6 @@
 import type { ConflictFile, ConflictHunk, OperationContext } from "@smartmerge/protocol";
 import { beforeAll, describe, expect, it } from "vitest";
+import { REPLAY_CASES, replayPath } from "./corpus.js";
 import { initParsers } from "./parse.js";
 import { proposeForFile } from "./strategies.js";
 
@@ -16,53 +17,6 @@ const operation: OperationContext = {
   mergeBaseSha: "cccccccccc",
 };
 
-const cases: Array<{
-  languageId: "typescript" | "javascript";
-  base: string;
-  current: string;
-  incoming: string;
-  expected: string | null;
-}> = [
-  {
-    languageId: "typescript",
-    base: "function alpha() {\n  return 1;\n}\n\nfunction beta() {\n  return 1;\n}\n",
-    current: "function alpha() {\n  return 2;\n}\n\nfunction beta() {\n  return 1;\n}\n",
-    incoming: "function alpha() {\n  return 1;\n}\n\nfunction beta() {\n  return 3;\n}\n",
-    expected: "function alpha() {\n  return 2;\n}\n\nfunction beta() {\n  return 3;\n}\n",
-  },
-  {
-    languageId: "typescript",
-    base: 'import { a } from "./m";\n',
-    current: 'import { a, b } from "./m";\n',
-    incoming: 'import { a, c } from "./m";\n',
-    expected: 'import { a, b, c } from "./m";\n',
-  },
-  {
-    languageId: "javascript",
-    base: "function load() {\n  return 1;\n}\n",
-    current: "function fetch() {\n  return 1;\n}\n",
-    incoming: "function load() {\n  return 2;\n}\n",
-    expected: "function fetch() {\n  return 2;\n}\n",
-  },
-  {
-    languageId: "typescript",
-    base: "export function kept() {\n  return 1;\n}\n\nexport function other() {\n  return 1;\n}\n",
-    current:
-      "export function kept() {\n  return 4;\n}\n\nexport function other() {\n  return 1;\n}\n",
-    incoming:
-      "export function kept() {\n  return 1;\n}\n\nexport function other() {\n  return 5;\n}\n",
-    expected:
-      "export function kept() {\n  return 4;\n}\n\nexport function other() {\n  return 5;\n}\n",
-  },
-  {
-    languageId: "typescript",
-    base: "function alpha() {\n  return 1;\n}\n",
-    current: "function alpha() {\n  return 2;\n}\n",
-    incoming: "function alpha() {\n  return 3;\n}\n",
-    expected: null,
-  },
-];
-
 beforeAll(async () => {
   await initParsers();
 });
@@ -71,7 +25,7 @@ describe("replay corpus", () => {
   it("keeps auto-apply precision at or above 99 percent on certain results", () => {
     let certain = 0;
     let correct = 0;
-    for (const item of cases) {
+    for (const item of REPLAY_CASES) {
       const hunk: ConflictHunk = {
         id: "hunk:1",
         range: { startLine: 1, endLine: 8 },
@@ -87,7 +41,7 @@ describe("replay corpus", () => {
         semanticChanges: [],
       };
       const file: ConflictFile = {
-        path: item.languageId === "javascript" ? "file.js" : "file.ts",
+        path: replayPath(item),
         kind: "content",
         languageId: item.languageId,
         operation,

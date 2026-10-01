@@ -52,7 +52,7 @@ Task-based comparison versus built-in merge tooling, 15–20 developers, 6 confl
 
 ## Agent interface tests
 
-The agent quality gates in `14-ai-agent-interface.md` (verification catch rate, zero unsafe applies, policy-bypass and prompt-injection suites, token budgets) run in CI against the MCP server and JSON CLI using scripted agent transcripts, so no live LLM is needed for the gates.
+The agent quality gates in `14-ai-agent-interface.md` (verification catch rate, zero unsafe applies, policy-bypass and prompt-injection suites, token budgets) run in CI against the MCP server and JSON CLI using scripted agent transcripts, so no live LLM is needed for the gates. `packages/mcp/src/gates.ts` scores that run. Compact-mode size is recorded as characters divided by four. The token budget stays unset until an M4 baseline exists.
 
 ## Fuzzing
 
