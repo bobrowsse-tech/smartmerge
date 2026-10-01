@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import type { ConflictHunk } from "@smartmerge/protocol";
 import { afterEach, describe, expect, it } from "vitest";
+import { markerRemains } from "./ci.js";
 
 const execFileAsync = promisify(execFile);
 const script = fileURLToPath(new URL("../dist/main.js", import.meta.url));
@@ -121,6 +123,17 @@ describe("ci command", () => {
       "utf8",
     );
     expect(skill).toContain("name: resolve-conflicts");
+  });
+
+  it("does not read a path that leaves the repository", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "smartmerge-ci-trav-"));
+    roots.push(parent);
+    const repo = join(parent, "repo");
+    await mkdir(repo);
+    await writeFile(join(parent, "secret.txt"), "<<<<<<< outside\n");
+    const hunk = { range: { startLine: 1, endLine: 1 } } as ConflictHunk;
+    await expect(markerRemains(repo, "../secret.txt", hunk)).resolves.toBe(false);
+    await expect(markerRemains(repo, "/etc/passwd", hunk)).resolves.toBe(false);
   });
 
   it("ships a pipeline action that only accepts known policies", async () => {

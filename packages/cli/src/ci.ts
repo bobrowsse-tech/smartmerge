@@ -85,6 +85,19 @@ export async function runCi(
     );
     for (const row of rows) {
       const path = row.file.path;
+      if (repoRelativePath(repo, path) === null) {
+        skipped += row.file.hunks.length;
+        files.push({
+          path: conceal(path, redactions),
+          hunks: row.file.hunks.map((hunk) => ({
+            hunkId: hunk.id,
+            outcome: "skipped" as const,
+            reason: "That path is outside the repository.",
+          })),
+        });
+        await audit(repo, "blocked", "That path is outside the repository.");
+        continue;
+      }
       const proposals = await client.propose(session.sessionId, path);
       const hunks = [...row.file.hunks].sort(
         (left, right) => right.range.startLine - left.range.startLine,
@@ -229,8 +242,18 @@ async function stageIfResolved(repo: string, path: string): Promise<void> {
   await git(repo, ["add", "--", relative]);
 }
 
-async function markerRemains(repo: string, path: string, hunk: ConflictHunk): Promise<boolean> {
-  const text = await readFile(join(repo, path), "utf8");
+/**
+ * True when the hunk range still contains a conflict marker.
+ * Paths that leave the repository are refused and are not read.
+ */
+export async function markerRemains(
+  repo: string,
+  path: string,
+  hunk: ConflictHunk,
+): Promise<boolean> {
+  const relative = repoRelativePath(repo, path);
+  if (relative === null) return false;
+  const text = await readFile(join(repo, relative), "utf8");
   const lines = text.split(/\r?\n/);
   const slice = lines.slice(hunk.range.startLine - 1, hunk.range.endLine).join("\n");
   return slice.includes("<<<<<<<");
