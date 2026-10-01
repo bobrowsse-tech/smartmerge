@@ -36,7 +36,7 @@ Metrics on held-out test:
 1. Extract features per candidate (see 03 §5).
 2. Fit logistic regression on train; apply isotonic/Platt calibration on validation.
 3. Export coefficients as versioned JSON (`scoring-model-vX.json`) loaded by core.
-4. CI recomputes metrics; fail if precision or ECE gate regresses.
+4. CI recomputes metrics; fail if precision or ECE gate regresses. `tools/calibration/score.ts` is covered by the tool tests in CI. `tsx tools/calibration/main.ts outcomes.json` scores a held-out file when one is supplied. An empty set does not pass and does not record an error. When outcomes exist, every populated confidence band must stay under 0.03. CI does not generate held-out outcomes.
 
 ## Safety tests (must always pass)
 
