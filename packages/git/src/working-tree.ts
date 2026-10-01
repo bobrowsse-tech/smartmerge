@@ -52,6 +52,33 @@ export async function backupWorkingFile(
   return { id, bytes };
 }
 
+/**
+ * Snapshot a working file before it is replaced.
+ * A missing file is recorded as absent so undo can remove the path instead of writing bytes.
+ */
+export async function snapshotWorkingFile(
+  repoRoot: string,
+  path: string,
+): Promise<{ id: string; absent: boolean }> {
+  try {
+    const saved = await backupWorkingFile(repoRoot, path);
+    return { id: saved.id, absent: false };
+  } catch (error) {
+    if (!isNotFound(error)) throw error;
+    const id = randomUUID();
+    const gitDir = await gitDirectory(repoRoot);
+    const backups = resolve(gitDir, "smartmerge", "backups");
+    await mkdir(backups, { recursive: true });
+    await writeAtomic(resolve(backups, id), Buffer.alloc(0));
+    return { id, absent: true };
+  }
+}
+
+/** Remove a working file that was created after an absent snapshot. */
+export async function removeWorkingFile(repoRoot: string, path: string): Promise<void> {
+  await rm(resolveInside(repoRoot, path), { force: true });
+}
+
 /** Restore a backup over the working file with an atomic replace. */
 export async function restoreBackup(
   repoRoot: string,

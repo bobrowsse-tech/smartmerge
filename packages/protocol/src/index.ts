@@ -330,6 +330,8 @@ export interface SessionLogEntry {
   candidateId?: string;
   strategy?: StrategyId;
   backupId: string;
+  /** True when the path did not exist before the write. Undo removes the file. */
+  absentBefore?: boolean;
 }
 
 /** One local audit line. This file never leaves the machine. */

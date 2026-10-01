@@ -1,0 +1,31 @@
+name: Conflict report
+description: Report merge conflicts. Applies a resolution only when the policy allows writes. Requires smart-merge on PATH.
+inputs:
+  policy:
+    description: Highest action this run may take.
+    required: false
+    default: propose-and-verify
+  dry-run:
+    description: Set to true to report eligible resolutions without writing.
+    required: false
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - name: Run conflict report
+      shell: bash
+      env:
+        SMARTMERGE_POLICY: ${{ inputs.policy }}
+        SMARTMERGE_DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        case "$SMARTMERGE_POLICY" in
+          read-only|propose-and-verify|apply-safe|apply-any) ;;
+          *) echo "Policy must be read-only, propose-and-verify, apply-safe, or apply-any." >&2; exit 2 ;;
+        esac
+        extra=()
+        case "$SMARTMERGE_DRY_RUN" in
+          true) extra+=(--dry-run) ;;
+          false) ;;
+          *) echo "dry-run must be true or false." >&2; exit 2 ;;
+        esac
+        smart-merge ci --json --policy "$SMARTMERGE_POLICY" "${extra[@]}"
