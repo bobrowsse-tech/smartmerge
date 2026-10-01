@@ -1,6 +1,7 @@
 ---
 "@smartmerge/core": patch
 "@smartmerge/daemon": patch
+"@smartmerge/vscode": patch
 "smart-merge-resolver": patch
 ---
 
