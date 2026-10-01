@@ -27,6 +27,8 @@ export interface FetchedConflict {
   incoming: string | null;
   /** File committed by the merge, or null when the merge removed it. */
   humanResult: string | null;
+  /** Replayed merge with conflict markers. This is the file a resolution is applied to. */
+  conflicted: string;
   /** Conflict regions in the replayed merge. */
   hunks: number;
 }
@@ -96,12 +98,16 @@ export async function fetchClonedConflicts(
 /**
  * Refuse a destination inside the source repository.
  * The source is the Git top-level, and both paths are canonicalized so a symlink cannot point back into it.
- * When the destination is inside any repository, `conflicts.json` must be ignored.
+ * When the destination is inside any repository, `fileName` must be ignored.
  */
 export async function assertCorpusDestination(
   repoRoot: string | null,
   outDir: string,
+  fileName = "conflicts.json",
 ): Promise<void> {
+  if (fileName.length === 0 || fileName !== basename(fileName) || fileName.includes("..")) {
+    throw new Error("The corpus file name must be a single path segment.");
+  }
   const out = await canonicalPath(outDir);
   if (repoRoot !== null) {
     const shown = await git(repoRoot, ["rev-parse", "--show-toplevel"], { allowFailure: true });
@@ -114,13 +120,9 @@ export async function assertCorpusDestination(
   const top = await git(out.existing, ["rev-parse", "--show-toplevel"], { allowFailure: true });
   if (top.exitCode !== 0) return;
   const repo = await canonicalPath(top.stdout.trim());
-  const ignored = await git(
-    repo.existing,
-    ["check-ignore", "--", join(out.full, "conflicts.json")],
-    {
-      allowFailure: true,
-    },
-  );
+  const ignored = await git(repo.existing, ["check-ignore", "--", join(out.full, fileName)], {
+    allowFailure: true,
+  });
   if (ignored.exitCode !== 0) {
     throw new Error("Write the corpus outside a repository, or into an ignored directory.");
   }
@@ -132,13 +134,26 @@ export async function writeConflictFiles(
   conflicts: readonly FetchedConflict[],
   repoRoot: string | null,
 ): Promise<string> {
-  await assertCorpusDestination(repoRoot, outDir);
+  return writeCorpusJson(outDir, "conflicts.json", conflicts, repoRoot);
+}
+
+/** Write a JSON file outside the source repository. The destination is checked again immediately before the write. */
+export async function writeCorpusJson(
+  outDir: string,
+  fileName: string,
+  value: unknown,
+  repoRoot: string | null,
+): Promise<string> {
+  if (fileName.length === 0 || fileName !== basename(fileName) || fileName.includes("..")) {
+    throw new Error("The corpus file name must be a single path segment.");
+  }
+  await assertCorpusDestination(repoRoot, outDir, fileName);
   const destination = await canonicalPath(outDir);
   await mkdir(destination.full, { recursive: true });
   const created = await realpath(destination.full);
-  await assertCorpusDestination(repoRoot, created);
-  const file = join(created, "conflicts.json");
-  await writeFile(file, `${JSON.stringify(conflicts, null, 2)}\n`, "utf8");
+  await assertCorpusDestination(repoRoot, created, fileName);
+  const file = join(created, fileName);
+  await writeFile(file, `${JSON.stringify(value, null, 2)}\n`, "utf8");
   return file;
 }
 
@@ -208,6 +223,7 @@ async function conflictsInMerge(
       current,
       incoming,
       humanResult,
+      conflicted,
       hunks,
     });
   }

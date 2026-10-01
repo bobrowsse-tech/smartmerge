@@ -460,3 +460,42 @@ export interface LlmProvider {
     signal: AbortSignal;
   }): Promise<Array<{ text: string; rationale: string }>>;
 }
+
+/**
+ * One fetched conflict at file grain.
+ * `conflicted` still contains the merge markers.
+ * `base` is the merge-base file, or null when that path did not exist there.
+ * `humanResult` is the file the merge committed, or null when the merge removed it.
+ */
+export interface ReplayConflict {
+  repository: string;
+  path: string;
+  conflicted: string;
+  base: string | null;
+  humanResult: string | null;
+}
+
+/** Where a replay confidence came from. This build records only the fixed proposal score. */
+export type ReplayConfidenceSource = "fixed-proposal";
+
+/**
+ * One prediction.
+ * `confidence` is the fixed proposal score. It is not a fitted model probability.
+ */
+export interface ReplayOutcome {
+  repository: string;
+  confidence: number;
+  correct: boolean;
+  confidenceSource: ReplayConfidenceSource;
+}
+
+/**
+ * Replay result.
+ * Files without a recommendation for every hunk are counted and omitted. No calibration error is computed.
+ */
+export interface ReplayReport {
+  rows: ReplayOutcome[];
+  predicted: number;
+  unresolved: number;
+  unparsed: number;
+}
