@@ -81,6 +81,8 @@ async function stageDaemon(repo: string, destination: string): Promise<void> {
     platform: "node",
     target: "node24",
     outdir: daemon,
+    // The optional config loader is not bundled. A missing loader fails that lint check.
+    external: ["jiti", "jiti/package.json"],
     minify: true,
     legalComments: "none",
     banner: {

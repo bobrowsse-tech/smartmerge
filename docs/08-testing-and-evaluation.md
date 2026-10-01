@@ -42,7 +42,7 @@ Metrics on held-out test:
 
 - Applying then undoing restores byte-identical file.
 - Kill daemon mid-apply: working file is either old or fully new, never partial (atomic write plus fsync, temp file rename).
-- Untrusted workspace: no project tools executed.
+- Untrusted workspace: no project tools executed. The bundled type checker is not a project tool. Project lint is skipped unless the caller marks the workspace trusted.
 - LLM disabled: zero network calls (asserted via network stub).
 - Secrets in hunks never appear in LLM payload preview.
 

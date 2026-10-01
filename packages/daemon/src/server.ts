@@ -19,6 +19,7 @@ import {
   appendSessionLog,
   backupWorkingFile,
   enrichLineage,
+  readWorkingBytes,
   findRepoRoot,
   listUnmerged,
   readOperation,
@@ -47,6 +48,7 @@ const SERVER_VERSION = "0.0.0";
  */
 export class DaemonServer {
   private initialized = false;
+  private workspaceTrusted = false;
   private config: SmartMergeConfig = defaultConfig();
   private readonly sessions = new Map<string, ConflictSession>();
   private readonly knownBases = new Map<string, readonly string[]>();
@@ -73,6 +75,7 @@ export class DaemonServer {
       throw new ResponseError(ErrorCodes.InvalidParams, "repoRoot is required");
     }
     this.initialized = true;
+    this.workspaceTrusted = params.workspaceTrusted;
     this.config = defaultConfig();
     return {
       serverVersion: SERVER_VERSION,
@@ -169,15 +172,14 @@ export class DaemonServer {
     if (!hunk) {
       throw new ResponseError(ErrorCodes.InvalidParams, `No hunk ${params.hunkId}`);
     }
-    return this.pool.verify(
-      {
-        path: params.path,
-        languageId: entry.file.languageId,
-        result: params.resultText,
-        current: hunk.current,
-        incoming: hunk.incoming,
-      },
-      new AbortController().signal,
+    return this.checkResolution(
+      session,
+      params.path,
+      entry.file.languageId,
+      params.resultText,
+      hunk.current,
+      hunk.incoming,
+      hunk.range,
     );
   }
 
@@ -264,15 +266,14 @@ export class DaemonServer {
       throw new ResponseError(ErrorCodes.InvalidParams, "Result text is too large.");
     }
     const located = locateHunk(session, action.hunkId);
-    const verified = await this.pool.verify(
-      {
-        path: located.path,
-        languageId: located.row.file.languageId,
-        result: action.text,
-        current: located.hunk.current,
-        incoming: located.hunk.incoming,
-      },
-      new AbortController().signal,
+    const verified = await this.checkResolution(
+      session,
+      located.path,
+      located.row.file.languageId,
+      action.text,
+      located.hunk.current,
+      located.hunk.incoming,
+      located.hunk.range,
     );
     if (verified.hazardous && action.acceptHazardous !== true) {
       throw new ResponseError(ErrorCodes.InvalidParams, "Refusing to apply a hazardous edit");
@@ -298,6 +299,42 @@ export class DaemonServer {
     if (!this.initialized) {
       throw new ResponseError(ErrorCodes.ServerNotInitialized, "Call initialize first");
     }
+  }
+
+  /**
+   * Verify one hunk against the working file.
+   * Trust comes from initialization. The check sees the whole file with the hunk replaced.
+   */
+  private async checkResolution(
+    session: ConflictSession,
+    path: string,
+    languageId: string | null,
+    result: string,
+    current: string,
+    incoming: string,
+    range: { startLine: number; endLine: number },
+  ): Promise<VerifyResult> {
+    let fileText: string | undefined;
+    try {
+      fileText = (await readWorkingBytes(session.repoRoot, path)).toString("utf8");
+    } catch {
+      fileText = undefined;
+    }
+    return this.pool.verify(
+      {
+        path,
+        languageId,
+        result,
+        current,
+        incoming,
+        trusted: this.workspaceTrusted,
+        projectRoot: session.repoRoot,
+        ...(fileText === undefined
+          ? {}
+          : { fileText, startLine: range.startLine, endLine: range.endLine }),
+      },
+      new AbortController().signal,
+    );
   }
 }
 

@@ -1,4 +1,12 @@
-import type { Check, CheckKind, CheckStatus, Diagnostic, VerifyResult } from "@smartmerge/protocol";
+import type {
+  Check,
+  CheckKind,
+  CheckStatus,
+  Diagnostic,
+  Range,
+  VerifyResult,
+} from "@smartmerge/protocol";
+import { replaceHunk } from "./apply.js";
 import { parseSource, type ParseIssue, type ParsedSource } from "./parse.js";
 
 /** Same cap the proposal strategies use when checks have not all run. */
@@ -79,39 +87,87 @@ function layer(
 
 /**
  * Check a resolution someone else wrote. This does not write the file.
- * Types and lint stay unknown until those checks exist, so a clean parse is not a certain result.
+ * Types use the bundled compiler. Project lint runs only when `trusted` is set.
+ * Confidence stays on the fixed checked values, so a passing type check is not a certain result.
  */
-export function verifyResolution(input: {
+export async function verifyResolution(input: {
   path: string;
   languageId: string | null;
   result: string;
   current: string;
   incoming: string;
-}): VerifyResult {
+  /** Conflicted working file. With `hunkRange`, checks see the whole file with the hunk replaced. */
+  fileText?: string;
+  hunkRange?: Range;
+  trusted?: boolean;
+  projectRoot?: string;
+}): Promise<VerifyResult> {
   const languageId = input.languageId ?? "";
-  const result = parseSource(languageId, input.result);
-  const current = parseSource(languageId, input.current);
-  const incoming = parseSource(languageId, input.incoming);
+  const variants = variantsFor(input);
+  const checked = variants ?? {
+    result: input.result,
+    current: input.current,
+    incoming: input.incoming,
+  };
+  // Loaded only for a verify call, so daemon startup and proposals do not pay for the compiler.
+  const { checkTypes } = await import("./types.js");
+  const types =
+    variants === null
+      ? notRun("types", "The hunk range does not match the file.")
+      : checkTypes({ ...input, ...checked });
+  const lint =
+    input.trusted === true
+      ? await (
+          await import("./lint.js")
+        ).checkLint({
+          path: input.path,
+          result: checked.result,
+          current: checked.current,
+          incoming: checked.incoming,
+          trusted: true,
+          ...(input.projectRoot === undefined ? {} : { projectRoot: input.projectRoot }),
+        })
+      : notRun("lint", "Project lint runs only in a trusted workspace.");
+  const result = parseSource(languageId, checked.result);
+  const current = parseSource(languageId, checked.current);
+  const incoming = parseSource(languageId, checked.incoming);
   if (!result || !current || !incoming) {
     return summarize([
       notRun("syntax", "This language uses line comparison only."),
       notRun("symbols", "This language uses line comparison only."),
-      notRun("types", "Type checks have not run."),
-      notRun("lint", "Lint checks have not run."),
+      types,
+      lint,
     ]);
   }
   const verified = verifyParsed(input.path, result, current, incoming);
-  return summarize([
-    ...verified.checks,
-    notRun("types", "Type checks have not run."),
-    notRun("lint", "Lint checks have not run."),
-  ]);
+  return summarize([...verified.checks, types, lint]);
+}
+
+function variantsFor(input: {
+  result: string;
+  current: string;
+  incoming: string;
+  fileText?: string;
+  hunkRange?: Range;
+}): { result: string; current: string; incoming: string } | null | undefined {
+  if (input.fileText === undefined || input.hunkRange === undefined) return undefined;
+  try {
+    return {
+      result: replaceHunk(input.fileText, input.hunkRange, input.result),
+      current: replaceHunk(input.fileText, input.hunkRange, input.current),
+      incoming: replaceHunk(input.fileText, input.hunkRange, input.incoming),
+    };
+  } catch {
+    return null;
+  }
 }
 
 function summarize(checks: Check[]): VerifyResult {
   const overall = overallOf(checks);
   const hazardous = checks.some(
-    (check) => (check.kind === "syntax" || check.kind === "symbols") && check.status === "fail",
+    (check) =>
+      (check.kind === "syntax" || check.kind === "symbols" || check.kind === "types") &&
+      check.status === "fail",
   );
   return {
     checks,

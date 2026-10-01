@@ -16,6 +16,12 @@ export interface VerifyJob {
   result: string;
   current: string;
   incoming: string;
+  /** Taken from initialization. Project lint runs only when this is true. */
+  trusted: boolean;
+  projectRoot?: string;
+  fileText?: string;
+  startLine?: number;
+  endLine?: number;
 }
 
 export type WorkerRequest = ProposeJob | VerifyJob | { kind: "cancel"; jobId: string };
