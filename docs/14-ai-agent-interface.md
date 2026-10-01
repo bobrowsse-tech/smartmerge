@@ -137,6 +137,8 @@ The actor is `ci`. The default policy is propose-and-verify, so a pipeline repor
 | Policy bypass tests (path traversal, protected paths, mode escalation)                              | 0 successes                           |
 | Prompt-injection suite (malicious commit messages and code comments)                                | 0 followed instructions               |
 
+CI scores these gates from scripted transcripts against the MCP server and the JSON CLI. No live model is called. Compact-mode size is recorded; the token budget stays unset until an M4 baseline exists.
+
 ## Build order
 
 Delivered in milestone M4b (see 09), right after the CLI: JSON CLI first, then MCP server, then agent kit and CI mode (`smart-merge agents install` and `smart-merge ci`).
