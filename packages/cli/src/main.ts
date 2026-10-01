@@ -2,7 +2,7 @@
 import { installAgentKit } from "@smartmerge/agent-kit";
 import { defaultConfig } from "@smartmerge/core";
 import { startStdioMcp } from "@smartmerge/mcp";
-import type { AgentPolicy } from "@smartmerge/protocol";
+import type { AgentPolicy, VerifyResult } from "@smartmerge/protocol";
 import { applyFile, undoApply } from "./act.js";
 import { requireGitRoot, runCi } from "./ci.js";
 import { CommandFailure, failureFromMessage, writeError, writeResult } from "./failure.js";
@@ -158,7 +158,7 @@ try {
     else {
       const summary = checked.result.hazardous
         ? "Verification failed. Nothing was written.\n"
-        : "Syntax and symbols did not fail. Types and lint have not run. Nothing was written.\n";
+        : passedSummary(checked.result);
       process.stdout.write(summary);
     }
     process.exit(checked.code);
@@ -407,6 +407,16 @@ function parseMode(value: string): AgentPolicy["mode"] {
     "INVALID_INPUT",
     "Policy must be read-only, propose-and-verify, apply-safe, or apply-any.",
   );
+}
+
+function passedSummary(result: VerifyResult): string {
+  const types = result.checks.find((check) => check.kind === "types")?.status;
+  const lint = result.checks.find((check) => check.kind === "lint")?.status;
+  const typeSentence =
+    types === "pass" ? "Types passed." : types === "fail" ? "Types failed." : "Types have not run.";
+  const lintSentence =
+    lint === "pass" ? "Lint passed." : lint === "fail" ? "Lint failed." : "Lint has not run.";
+  return `Syntax and symbols did not fail. ${typeSentence} ${lintSentence} Nothing was written.\n`;
 }
 
 function parseUiArgs(args: string[]): { repo: string; port: number; open: boolean } {

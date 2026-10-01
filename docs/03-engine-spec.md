@@ -58,6 +58,8 @@ Run on the _virtual result_ of each candidate. Layers, cheapest first, each retu
 
 Baseline diffing: run the same check on `ours` and `theirs` sides so pre-existing errors are not blamed on the candidate.
 
+Type checks use the bundled compiler on the candidate and both sides. They do not load a project program or project plugins. Project lint config is applied only when the caller marks the workspace trusted, and inline lint directives in the file are ignored because the file is untrusted. Otherwise the lint check stays unknown.
+
 A candidate with any `fail` in syntax/symbols/types is marked `hazardous` and can never be auto-applied.
 
 ### 5. Score (confidence)

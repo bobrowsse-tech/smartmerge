@@ -55,7 +55,8 @@ describe("json commands", () => {
     const body = jsonBody(result.stdout);
     expect(body.result?.hazardous).toBe(true);
     expect(body.result?.overall).toBe("fail");
-    expect(body.result?.checks?.find((check) => check.kind === "types")?.status).toBe("unknown");
+    expect(body.result?.checks?.find((check) => check.kind === "types")?.status).not.toBe("pass");
+    expect(body.result?.checks?.find((check) => check.kind === "lint")?.status).toBe("unknown");
     expect(await readFile(join(root, "note.ts"), "utf8")).toBe(before);
     expect(before).toContain("<<<<<<<");
   });

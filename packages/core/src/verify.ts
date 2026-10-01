@@ -1,5 +1,7 @@
 import type { Check, CheckKind, CheckStatus, Diagnostic, VerifyResult } from "@smartmerge/protocol";
+import { checkLint } from "./lint.js";
 import { parseSource, type ParseIssue, type ParsedSource } from "./parse.js";
+import { checkTypes } from "./types.js";
 
 /** Same cap the proposal strategies use when checks have not all run. */
 const UNCHECKED_CONFIDENCE = 0.8;
@@ -79,16 +81,28 @@ function layer(
 
 /**
  * Check a resolution someone else wrote. This does not write the file.
- * Types and lint stay unknown until those checks exist, so a clean parse is not a certain result.
+ * Types use the bundled compiler. Project lint runs only when `trusted` is set.
+ * Confidence stays on the fixed checked values, so a passing type check is not a certain result.
  */
-export function verifyResolution(input: {
+export async function verifyResolution(input: {
   path: string;
   languageId: string | null;
   result: string;
   current: string;
   incoming: string;
-}): VerifyResult {
+  trusted?: boolean;
+  projectRoot?: string;
+}): Promise<VerifyResult> {
   const languageId = input.languageId ?? "";
+  const types = checkTypes(input);
+  const lint = await checkLint({
+    path: input.path,
+    result: input.result,
+    current: input.current,
+    incoming: input.incoming,
+    trusted: input.trusted === true,
+    ...(input.projectRoot === undefined ? {} : { projectRoot: input.projectRoot }),
+  });
   const result = parseSource(languageId, input.result);
   const current = parseSource(languageId, input.current);
   const incoming = parseSource(languageId, input.incoming);
@@ -96,22 +110,20 @@ export function verifyResolution(input: {
     return summarize([
       notRun("syntax", "This language uses line comparison only."),
       notRun("symbols", "This language uses line comparison only."),
-      notRun("types", "Type checks have not run."),
-      notRun("lint", "Lint checks have not run."),
+      types,
+      lint,
     ]);
   }
   const verified = verifyParsed(input.path, result, current, incoming);
-  return summarize([
-    ...verified.checks,
-    notRun("types", "Type checks have not run."),
-    notRun("lint", "Lint checks have not run."),
-  ]);
+  return summarize([...verified.checks, types, lint]);
 }
 
 function summarize(checks: Check[]): VerifyResult {
   const overall = overallOf(checks);
   const hazardous = checks.some(
-    (check) => (check.kind === "syntax" || check.kind === "symbols") && check.status === "fail",
+    (check) =>
+      (check.kind === "syntax" || check.kind === "symbols" || check.kind === "types") &&
+      check.status === "fail",
   );
   return {
     checks,
