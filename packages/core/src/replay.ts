@@ -1,8 +1,16 @@
-import type { OperationContext, ResolutionProposal } from "@smartmerge/protocol";
+import type {
+  OperationContext,
+  ReplayConflict,
+  ReplayOutcome,
+  ReplayReport,
+  ResolutionProposal,
+} from "@smartmerge/protocol";
 import { replaceHunk } from "./apply.js";
 import { buildConflict } from "./conflicts.js";
 import { initParsers } from "./parse.js";
 import { proposeForFile } from "./strategies.js";
+
+export type { ReplayConflict, ReplayOutcome, ReplayReport };
 
 const operation: OperationContext = {
   operation: "merge",
@@ -12,48 +20,23 @@ const operation: OperationContext = {
 };
 
 /**
- * One fetched conflict at file grain.
- * `conflicted` still contains the merge markers. `humanResult` is the committed file.
- */
-export interface ReplayConflict {
-  repository: string;
-  path: string;
-  conflicted: string;
-  humanResult: string | null;
-}
-
-/**
- * One prediction.
- * `confidence` is the fixed proposal score. It is not a fitted model probability.
- */
-export interface ReplayOutcome {
-  repository: string;
-  confidence: number;
-  correct: boolean;
-  confidenceSource: "fixed-proposal";
-}
-
-/**
- * Replay result.
- * Files without a recommendation for every hunk are counted and omitted. No calibration error is computed.
- */
-export interface ReplayReport {
-  rows: ReplayOutcome[];
-  predicted: number;
-  unresolved: number;
-  unparsed: number;
-}
-
-/**
- * Apply the current proposal to each conflicted file and compare it with the committed result.
+ * Apply the current proposal to each conflicted file and compare the exact text with the committed file.
  * A file is a row only when every hunk has a recommendation. Confidence is the lowest of those scores.
+ * The merge-base file is passed through when it was stored, so a one-side change does not need diff3 markers.
+ * A parser that fails to load leaves structural recommendations unavailable. Line strategies still run.
  */
 export async function replayConflicts(
   conflicts: readonly ReplayConflict[],
-  options?: { structural?: boolean },
+  options?: { structural?: boolean; loadStructural?: () => Promise<void> },
 ): Promise<ReplayReport> {
   for (const conflict of conflicts) assertConflict(conflict);
-  if (options?.structural !== false) await initParsers();
+  if (options?.structural !== false) {
+    try {
+      await (options?.loadStructural ?? initParsers)();
+    } catch {
+      // Line strategies do not need the parser.
+    }
+  }
   const rows: ReplayOutcome[] = [];
   let unresolved = 0;
   let unparsed = 0;
@@ -68,7 +51,15 @@ export async function replayConflicts(
 
 function predict(conflict: ReplayConflict): ReplayOutcome | "unparsed" | "unresolved" {
   const built = buildConflict(
-    { path: conflict.path, text: conflict.conflicted, binary: false, missing: false },
+    {
+      path: conflict.path,
+      text: conflict.conflicted,
+      binary: false,
+      missing: false,
+      ...(conflict.base === null
+        ? {}
+        : { stages: { base: conflict.base, ours: null, theirs: null } }),
+    },
     operation,
   );
   if (built.file.hunks.length === 0) return "unparsed";
@@ -114,6 +105,9 @@ function assertConflict(conflict: ReplayConflict): void {
   if (conflict.path.trim().length === 0) throw new Error("Each conflict needs a path.");
   if (typeof conflict.conflicted !== "string")
     throw new Error("Each conflict needs conflicted text.");
+  if (conflict.base !== null && typeof conflict.base !== "string") {
+    throw new Error("base must be a string or null.");
+  }
   if (conflict.humanResult !== null && typeof conflict.humanResult !== "string") {
     throw new Error("humanResult must be a string or null.");
   }

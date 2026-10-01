@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { replayConflicts, type ReplayConflict } from "@smartmerge/core";
+import { replayConflicts } from "@smartmerge/core";
+import type { ReplayConflict } from "@smartmerge/protocol";
 import { assertCorpusDestination, writeCorpusJson } from "./corpus.js";
 
 const usage = "Usage: tsx packages/git/src/replay-main.ts <conflicts.json> --out <dir>";
@@ -58,9 +59,18 @@ function parseConflicts(input: unknown): ReplayConflict[] {
     const path = typeof record.path === "string" ? record.path : "";
     if (typeof record.conflicted !== "string")
       throw new Error("Each conflict needs conflicted text.");
+    if (record.base !== undefined && record.base !== null && typeof record.base !== "string") {
+      throw new Error("base must be a string or null.");
+    }
     if (record.humanResult !== null && typeof record.humanResult !== "string") {
       throw new Error("humanResult must be a string or null.");
     }
-    return { repository, path, conflicted: record.conflicted, humanResult: record.humanResult };
+    return {
+      repository,
+      path,
+      conflicted: record.conflicted,
+      base: typeof record.base === "string" ? record.base : null,
+      humanResult: record.humanResult,
+    };
   });
 }
