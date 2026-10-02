@@ -189,9 +189,19 @@ async function conflictsInMerge(
   const first = parents[0];
   const second = parents[1];
   if (parents.length !== 2 || first === undefined || second === undefined) return [];
+  // diff3 keeps the base section inside the markers. Ordinary markers leave hunk bases empty.
   const replay = await git(
     repoRoot,
-    ["merge-tree", "--write-tree", "--name-only", "--messages", first, second],
+    [
+      "-c",
+      "merge.conflictStyle=diff3",
+      "merge-tree",
+      "--write-tree",
+      "--name-only",
+      "--messages",
+      first,
+      second,
+    ],
     { allowFailure: true },
   );
   if (replay.exitCode === 0) return [];
