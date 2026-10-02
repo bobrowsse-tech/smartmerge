@@ -34,9 +34,13 @@ const manifest = {
   version,
   type: "module",
   publisher: record["publisher"],
+  author: record["author"],
   displayName: record["displayName"],
   description: record["description"],
   license: record["license"],
+  homepage: record["homepage"],
+  repository: record["repository"],
+  bugs: record["bugs"],
   engines: record["engines"],
   icon: "icon.png",
   categories: ["Other"],
@@ -58,15 +62,7 @@ if (process.argv.includes("--vsix")) {
   const vsix = join(packageRoot, `smartmerge-resolver-${version}.vsix`);
   await execFileAsync(
     join(packageRoot, "node_modules", ".bin", "vsce"),
-    [
-      "package",
-      "--pre-release",
-      "--no-dependencies",
-      "--allow-missing-repository",
-      "--skip-license",
-      "--out",
-      vsix,
-    ],
+    ["package", "--pre-release", "--no-dependencies", "--skip-license", "--out", vsix],
     { cwd: stage },
   );
   process.stdout.write(`${vsix}\n`);

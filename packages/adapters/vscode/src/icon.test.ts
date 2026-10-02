@@ -2,6 +2,26 @@ import { inflateSync } from "node:zlib";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+describe("developer contact", () => {
+  it("uses the public name, site, and address", () => {
+    const source = readFileSync(new URL("../package.json", import.meta.url), "utf8");
+    const manifest: unknown = JSON.parse(source);
+    if (typeof manifest !== "object" || manifest === null) throw new Error("manifest");
+    const record = manifest as Record<string, unknown>;
+    expect(record["publisher"]).toBe("bobrowsse-tech");
+    expect(record["author"]).toBe("Bob Rowsse Walakira <hello@bobrowsse.com>");
+    expect(record["homepage"]).toBe("https://bobrowsse.com");
+    const bugs = record["bugs"];
+    if (typeof bugs !== "object" || bugs === null) throw new Error("bugs");
+    expect((bugs as Record<string, unknown>)["email"]).toBe("hello@bobrowsse.com");
+    expect(source).not.toContain("gmail.com");
+    const pack = readFileSync(new URL("./pack.ts", import.meta.url), "utf8");
+    expect(pack).toContain('author: record["author"]');
+    expect(pack).toContain('homepage: record["homepage"]');
+    expect(pack).toContain('bugs: record["bugs"]');
+  });
+});
+
 describe("editor listing icon", () => {
   it("is a square PNG with a transparent background", () => {
     const buf = readFileSync(new URL("../../../../assets/logo.png", import.meta.url));
