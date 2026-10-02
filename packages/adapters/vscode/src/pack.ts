@@ -26,6 +26,9 @@ const source: unknown = JSON.parse(await readFile(join(packageRoot, "package.jso
 if (typeof source !== "object" || source === null) throw new Error("extension package is invalid");
 const record = source as Record<string, unknown>;
 const version = (process.env["SMARTMERGE_VERSION"] ?? "0.1.0").replace(/^v/, "");
+// Raster of assets/logo.svg. The listing icon has to be a PNG, and the background stays transparent.
+const icon = join(repoRoot, "assets", "logo.png");
+await cp(icon, join(stage, "icon.png"));
 const manifest = {
   name: "smartmerge-resolver",
   version,
@@ -35,6 +38,7 @@ const manifest = {
   description: record["description"],
   license: record["license"],
   engines: record["engines"],
+  icon: "icon.png",
   categories: ["Other"],
   activationEvents: record["activationEvents"],
   contributes: record["contributes"],
