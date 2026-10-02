@@ -26,15 +26,23 @@ const source: unknown = JSON.parse(await readFile(join(packageRoot, "package.jso
 if (typeof source !== "object" || source === null) throw new Error("extension package is invalid");
 const record = source as Record<string, unknown>;
 const version = (process.env["SMARTMERGE_VERSION"] ?? "0.1.0").replace(/^v/, "");
+// Raster of assets/logo.svg. The listing icon has to be a PNG, and the background stays transparent.
+const icon = join(repoRoot, "assets", "logo.png");
+await cp(icon, join(stage, "icon.png"));
 const manifest = {
   name: "smartmerge-resolver",
   version,
   type: "module",
   publisher: record["publisher"],
+  author: record["author"],
   displayName: record["displayName"],
   description: record["description"],
   license: record["license"],
+  homepage: record["homepage"],
+  repository: record["repository"],
+  bugs: record["bugs"],
   engines: record["engines"],
+  icon: "icon.png",
   categories: ["Other"],
   activationEvents: record["activationEvents"],
   contributes: record["contributes"],
@@ -54,15 +62,7 @@ if (process.argv.includes("--vsix")) {
   const vsix = join(packageRoot, `smartmerge-resolver-${version}.vsix`);
   await execFileAsync(
     join(packageRoot, "node_modules", ".bin", "vsce"),
-    [
-      "package",
-      "--pre-release",
-      "--no-dependencies",
-      "--allow-missing-repository",
-      "--skip-license",
-      "--out",
-      vsix,
-    ],
+    ["package", "--pre-release", "--no-dependencies", "--skip-license", "--out", vsix],
     { cwd: stage },
   );
   process.stdout.write(`${vsix}\n`);

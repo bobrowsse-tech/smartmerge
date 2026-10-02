@@ -1,6 +1,6 @@
 # Governance
 
-SmartMergeResolver is maintained by the repository admins. Today that is the GitHub account that owns the repository.
+SmartMergeResolver is maintained by [Bob Rowsse Walakira](https://bobrowsse.com). Contact: [hello@bobrowsse.com](mailto:hello@bobrowsse.com). The GitHub account for this repository is bobrowsse-tech.
 
 ## What is public
 

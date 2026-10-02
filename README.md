@@ -25,4 +25,6 @@ The repository is public. `main` cannot be deleted, and it changes only through 
 
 Read [`AGENTS.md`](AGENTS.md) for the rules every contributor and coding agent follows, then [`docs/README.md`](docs/README.md).
 
+Developed by [Bob Rowsse Walakira](https://bobrowsse.com). Contact: [hello@bobrowsse.com](mailto:hello@bobrowsse.com).
+
 Not affiliated with or endorsed by any editor or platform vendor mentioned for compatibility purposes.
