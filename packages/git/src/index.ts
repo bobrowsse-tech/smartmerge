@@ -8,6 +8,13 @@ export {
   type FetchConflictsOptions,
 } from "./corpus.js";
 export {
+  collectMeasuredConflicts,
+  isCloneSource,
+  parseMeasureSources,
+  replayMeasuredConflicts,
+  type MeasureSource,
+} from "./measure.js";
+export {
   findRepoRoot,
   git,
   GitCommandError,
