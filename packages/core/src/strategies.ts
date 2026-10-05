@@ -22,14 +22,14 @@ const UNCHECKED_CAP = 0.8;
 
 /**
  * Fixed score for a structural result after syntax and symbol checks.
- * JSON stays in the high band until a replay corpus exists, so a clean merge is not marked certain.
+ * JSON and YAML stay in the high band until a replay corpus exists, so a clean merge is not marked certain.
  */
 export function structuralScore(
   languageId: string,
   hazardous: boolean,
 ): { confidence: number; band: ConfidenceBand } {
   if (hazardous) return { confidence: 0.2, band: "low" };
-  if (languageId === "json") return { confidence: 0.95, band: "high" };
+  if (languageId === "json" || languageId === "yaml") return { confidence: 0.95, band: "high" };
   return { confidence: 0.99, band: "certain" };
 }
 
@@ -159,10 +159,15 @@ function structuralCandidates(file: ConflictFile, hunk: ConflictHunk): Candidate
                   code: "json-keys",
                   text: "Each side edited different object keys. Untouched text is copied from the base.",
                 }
-              : {
-                  code: "disjoint-nodes",
-                  text: "Each side edited different declarations. Untouched text is copied from the base.",
-                },
+              : file.languageId === "yaml"
+                ? {
+                    code: "yaml-keys",
+                    text: "Each side edited different mapping keys. Untouched text is copied from the base.",
+                  }
+                : {
+                    code: "disjoint-nodes",
+                    text: "Each side edited different declarations. Untouched text is copied from the base.",
+                  },
         ),
       );
     }

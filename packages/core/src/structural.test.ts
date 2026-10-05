@@ -224,6 +224,77 @@ describe("structural strategies", () => {
     );
   });
 
+  it("merges YAML mapping keys that each side adds", () => {
+    const chosen = proposalForLanguage(
+      "yaml",
+      "data.yaml",
+      "shared: 1\n",
+      "shared: 1\na: 1\n",
+      "shared: 1\nb: 2\n",
+    );
+    expect(chosen?.recommended).toBe("hunk:1:structural-3way");
+    expect(chosen?.candidates[0]).toMatchObject({
+      result: "shared: 1\na: 1\nb: 2\n",
+      band: "high",
+      confidence: 0.95,
+      hazardous: false,
+      evidence: [
+        {
+          code: "yaml-keys",
+          text: "Each side edited different mapping keys. Untouched text is copied from the base.",
+        },
+      ],
+    });
+    expect(chosen?.autoApplyEligible).toBe(false);
+  });
+
+  it("merges keys added inside the same nested YAML mapping", () => {
+    const chosen = proposalForLanguage(
+      "yaml",
+      "data.yaml",
+      "user:\n  name: a\n",
+      "user:\n  name: a\n  age: 2\n",
+      "user:\n  name: a\n  role: b\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe("user:\n  name: a\n  age: 2\n  role: b\n");
+    expect(chosen?.candidates[0]?.band).toBe("high");
+  });
+
+  it("merges keys added to an empty YAML flow mapping", () => {
+    const chosen = proposalForLanguage("yaml", "data.yaml", "{}\n", "{ a: 1 }\n", "{ b: 2 }\n");
+    expect(chosen?.recommended).toBe("hunk:1:structural-3way");
+    expect(chosen?.candidates[0]?.result).toBe("{ a: 1, b: 2 }\n");
+  });
+
+  it("does not merge a YAML key that both sides change", () => {
+    const chosen = proposalForLanguage("yaml", "data.yaml", "n: 1\n", "n: 2\n", "n: 3\n");
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("treats a quoted YAML key as the same key", () => {
+    const chosen = proposalForLanguage("yaml", "data.yaml", "a: 1\n", "a: 2\n", '"a": 3\n');
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge YAML sequences when both sides change them", () => {
+    const chosen = proposalForLanguage(
+      "yaml",
+      "data.yaml",
+      "items:\n  - 1\n",
+      "items:\n  - 1\n  - 2\n",
+      "items:\n  - 1\n  - 3\n",
+    );
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
   it("does not recommend a merge when both sides edit the same function", () => {
     const chosen = proposalFor(
       "function alpha() {\n  return 1;\n}\n",
@@ -270,6 +341,17 @@ describe("breakage checks", () => {
     expect(duplicated.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
     expect(escaped.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
     expect(verifyParsed("data.json", duplicated, clean, clean).hazardous).toBe(true);
+  });
+
+  it("flags a repeated YAML mapping key", () => {
+    const clean = parseSource("yaml", "a: 1\nb: 2\n");
+    const duplicated = parseSource("yaml", "a: 1\na: 2\n");
+    const quoted = parseSource("yaml", 'a: 1\n"a": 2\n');
+    if (!clean || !duplicated || !quoted) throw new Error("parser unavailable");
+    expect(duplicated.hasErrors).toBe(false);
+    expect(duplicated.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(quoted.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(verifyParsed("data.yaml", duplicated, clean, clean).hazardous).toBe(true);
   });
 
   it("allows a repeated key in a JavaScript object literal", () => {

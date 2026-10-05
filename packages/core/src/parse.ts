@@ -64,6 +64,7 @@ const SUPPORTED = new Set([
   "javascript",
   "javascriptreact",
   "json",
+  "yaml",
 ]);
 
 const GLOBALS = new Set([
@@ -163,12 +164,19 @@ async function loadParsers(): Promise<void> {
   const json = await Language.load(
     grammar("tree-sitter-json/tree-sitter-json.wasm", "tree-sitter-json.wasm"),
   );
+  const yaml = await Language.load(
+    grammar(
+      "@tree-sitter-grammars/tree-sitter-yaml/tree-sitter-yaml.wasm",
+      "tree-sitter-yaml.wasm",
+    ),
+  );
   languages = new Map<string, Language>([
     ["typescript", typescript],
     ["typescriptreact", tsx],
     ["javascript", javascript],
     ["javascriptreact", javascript],
     ["json", json],
+    ["yaml", yaml],
   ]);
 }
 
@@ -259,6 +267,11 @@ function keyFor(languageId: string, node: SyntaxNode): { key: string; stable: bo
     const text = languageId === "json" ? (decodeJsonString(raw) ?? raw) : raw;
     return { key: `pair:${text}`, stable: text.length > 0 };
   }
+  if (node.type === "block_mapping_pair" || node.type === "flow_pair") {
+    const key = node.childForFieldName("key");
+    const text = key ? yamlKeyText(key) : "";
+    return { key: `yaml:${text}`, stable: text.length > 0 };
+  }
   if (node.type === "import_statement") {
     const moduleName = node.descendantsOfType("string")[0];
     return { key: `import:${moduleName?.text ?? ""}`, stable: true };
@@ -276,6 +289,40 @@ function keyFor(languageId: string, node: SyntaxNode): { key: string; stable: bo
   return { key: node.type, stable: false };
 }
 
+function mappingInterior(
+  mapping: SyntaxNode | null,
+): { parent: SyntaxNode; start: number; end: number } | null {
+  if (!mapping) return null;
+  if (mapping.type === "block_mapping") {
+    if (mapping.endIndex <= mapping.startIndex) return null;
+    return { parent: mapping, start: mapping.startIndex, end: mapping.endIndex };
+  }
+  if (mapping.type === "flow_mapping" && mapping.endIndex - mapping.startIndex >= 2) {
+    return { parent: mapping, start: mapping.startIndex + 1, end: mapping.endIndex - 1 };
+  }
+  return null;
+}
+
+/** The mapping a document or value directly contains. A sequence is not opened. */
+function nestedMapping(value: SyntaxNode | null): SyntaxNode | null {
+  if (!value) return null;
+  if (value.type === "block_mapping" || value.type === "flow_mapping") return value;
+  if (value.type === "block_sequence" || value.type === "flow_sequence") return null;
+  if (
+    value.type !== "document" &&
+    value.type !== "block_node" &&
+    value.type !== "flow_node" &&
+    value.type !== "stream"
+  ) {
+    return null;
+  }
+  for (const child of value.namedChildren) {
+    const found = nestedMapping(child);
+    if (found) return found;
+  }
+  return null;
+}
+
 function objectInterior(
   object: SyntaxNode,
 ): { parent: SyntaxNode; start: number; end: number } | null {
@@ -286,6 +333,13 @@ function objectInterior(
 function containerRange(
   node: SyntaxNode,
 ): { parent: SyntaxNode; start: number; end: number } | null {
+  if (node.type === "block_mapping" || node.type === "flow_mapping") return mappingInterior(node);
+  if (node.type === "document" || node.type === "block_node" || node.type === "flow_node") {
+    return mappingInterior(nestedMapping(node));
+  }
+  if (node.type === "block_mapping_pair" || node.type === "flow_pair") {
+    return mappingInterior(nestedMapping(node.childForFieldName("value")));
+  }
   if (node.type === "object") return objectInterior(node);
   if (node.type === "pair") {
     const value = node.childForFieldName("value");
@@ -347,6 +401,38 @@ function collectIdentifiers(root: SyntaxNode): IdentifierSpan[] {
 
 interface Binding {
   arity: number | null;
+}
+
+const YAML_SCALARS = new Set([
+  "plain_scalar",
+  "string_scalar",
+  "double_quote_scalar",
+  "single_quote_scalar",
+  "integer_scalar",
+  "float_scalar",
+  "boolean_scalar",
+  "null_scalar",
+  "block_scalar",
+]);
+
+function yamlKeyText(key: SyntaxNode): string {
+  const scalar = deepestScalar(key) ?? key;
+  if (scalar.type === "double_quote_scalar") return decodeJsonString(scalar.text) ?? scalar.text;
+  if (scalar.type === "single_quote_scalar") {
+    const token = scalar.text;
+    if (token.length < 2 || !token.startsWith("'") || !token.endsWith("'")) return token;
+    return token.slice(1, -1).replace(/''/g, "'");
+  }
+  return scalar.text;
+}
+
+function deepestScalar(node: SyntaxNode): SyntaxNode | null {
+  let found: SyntaxNode | null = YAML_SCALARS.has(node.type) ? node : null;
+  for (const child of node.namedChildren) {
+    const nested = deepestScalar(child);
+    if (nested) found = nested;
+  }
+  return found;
 }
 
 /** Decode a JSON string token. Returns null when the token is not a JSON string. */
@@ -467,6 +553,33 @@ function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
           const key = child.childForFieldName("key");
           const raw = key?.text ?? "";
           const text = decodeJsonString(raw) ?? raw;
+          if (text.length > 0 && seen.has(text)) {
+            issues.push({
+              line: child.startPosition.row + 1,
+              message: `Duplicate key ${JSON.stringify(text)}`,
+              code: "duplicate",
+            });
+          }
+          if (text.length > 0) seen.add(text);
+          const value = child.childForFieldName("value");
+          if (value) visit(value);
+        }
+        return;
+      }
+      case "block_mapping":
+      case "flow_mapping": {
+        if (languageId !== "yaml") {
+          for (const child of node.namedChildren) visit(child);
+          return;
+        }
+        const seen = new Set<string>();
+        for (const child of node.namedChildren) {
+          if (child.type !== "block_mapping_pair" && child.type !== "flow_pair") {
+            visit(child);
+            continue;
+          }
+          const key = child.childForFieldName("key");
+          const text = key ? yamlKeyText(key) : "";
           if (text.length > 0 && seen.has(text)) {
             issues.push({
               line: child.startPosition.row + 1,
