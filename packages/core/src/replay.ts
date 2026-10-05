@@ -7,8 +7,10 @@ import type {
 } from "@smartmerge/protocol";
 import { replaceHunk } from "./apply.js";
 import { buildConflict } from "./conflicts.js";
-import { initParsers } from "./parse.js";
+import { initParsers, isStructuralLanguage, parseSource, parsersReady } from "./parse.js";
 import { proposeForFile } from "./strategies.js";
+import { mergeRegions } from "./structure.js";
+import { verifyParsed } from "./verify.js";
 
 export type { ReplayConflict, ReplayOutcome, ReplayReport };
 
@@ -21,7 +23,8 @@ const operation: OperationContext = {
 
 /**
  * Apply the current proposal to each conflicted file and compare the exact text with the committed file.
- * A file is a row only when every hunk has a recommendation. Confidence is the lowest of those scores.
+ * A file is a row when every hunk has a recommendation, or when the three stored files merge as a whole.
+ * Confidence is the lowest hunk score, or the fixed structural score for a whole-file merge.
  * The merge-base file is passed through when it was stored, so a one-side change does not need diff3 markers.
  * A parser that fails to load leaves structural recommendations unavailable. Line strategies still run.
  */
@@ -65,10 +68,14 @@ function predict(conflict: ReplayConflict): ReplayOutcome | "unparsed" | "unreso
   if (built.file.hunks.length === 0) return "unparsed";
   const proposals = proposeForFile(built.file, new Set(built.knownBaseHunkIds));
   const pieces: { startLine: number; endLine: number; result: string; confidence: number }[] = [];
+  let covered = true;
   for (const hunk of built.file.hunks) {
     const proposal = proposals.find((item) => item.hunkId === hunk.id);
     const chosen = proposal === undefined ? null : recommended(proposal);
-    if (chosen === null) return "unresolved";
+    if (chosen === null) {
+      covered = false;
+      break;
+    }
     pieces.push({
       startLine: hunk.range.startLine,
       endLine: hunk.range.endLine,
@@ -76,6 +83,7 @@ function predict(conflict: ReplayConflict): ReplayOutcome | "unparsed" | "unreso
       confidence: chosen.confidence,
     });
   }
+  if (!covered) return wholeFileMerge(conflict, built.file.languageId) ?? "unresolved";
   const ordered = [...pieces].sort((left, right) => right.startLine - left.startLine);
   let text = conflict.conflicted;
   for (const piece of ordered) {
@@ -86,6 +94,41 @@ function predict(conflict: ReplayConflict): ReplayOutcome | "unparsed" | "unreso
     repository: conflict.repository.trim(),
     confidence,
     correct: text === conflict.humanResult,
+    confidenceSource: "fixed-proposal",
+  };
+}
+
+/**
+ * Merge the stored parent files when a hunk is only a fragment of a program.
+ * The score stays the fixed structural score. A fitted model is not involved.
+ */
+function wholeFileMerge(conflict: ReplayConflict, languageId: string | null): ReplayOutcome | null {
+  if (
+    conflict.base === null ||
+    conflict.current === null ||
+    conflict.incoming === null ||
+    languageId === null ||
+    !parsersReady() ||
+    !isStructuralLanguage(languageId)
+  ) {
+    return null;
+  }
+  const base = parseSource(languageId, conflict.base);
+  const current = parseSource(languageId, conflict.current);
+  const incoming = parseSource(languageId, conflict.incoming);
+  if (!base || !current || !incoming || base.hasErrors || current.hasErrors || incoming.hasErrors) {
+    return null;
+  }
+  const merged = mergeRegions(base.region, current.region, incoming.region);
+  if (merged === null || merged === conflict.current || merged === conflict.incoming) return null;
+  const parsed = parseSource(languageId, merged);
+  if (!parsed) return null;
+  const verified = verifyParsed(conflict.path, parsed, current, incoming);
+  if (verified.hazardous) return null;
+  return {
+    repository: conflict.repository.trim(),
+    confidence: 0.99,
+    correct: merged === conflict.humanResult,
     confidenceSource: "fixed-proposal",
   };
 }
@@ -107,6 +150,12 @@ function assertConflict(conflict: ReplayConflict): void {
     throw new Error("Each conflict needs conflicted text.");
   if (conflict.base !== null && typeof conflict.base !== "string") {
     throw new Error("base must be a string or null.");
+  }
+  if (conflict.current !== null && typeof conflict.current !== "string") {
+    throw new Error("current must be a string or null.");
+  }
+  if (conflict.incoming !== null && typeof conflict.incoming !== "string") {
+    throw new Error("incoming must be a string or null.");
   }
   if (conflict.humanResult !== null && typeof conflict.humanResult !== "string") {
     throw new Error("humanResult must be a string or null.");

@@ -82,6 +82,8 @@ export async function replayMeasuredConflicts(
       path: conflict.path,
       conflicted: conflict.conflicted,
       base: conflict.base,
+      current: conflict.current,
+      incoming: conflict.incoming,
       humanResult: conflict.humanResult,
     })),
   );

@@ -10,6 +10,8 @@ describe("replayConflicts", () => {
           path: "file.ts",
           conflicted: "keep\n<<<<<<< current\nsame\n=======\nsame\n>>>>>>> incoming\n",
           base: null,
+          current: null,
+          incoming: null,
           humanResult: "keep\nsame\n",
         },
       ],
@@ -36,6 +38,8 @@ describe("replayConflicts", () => {
           path: "file.ts",
           conflicted: "<<<<<<< current\nsame\n=======\nsame\n>>>>>>> incoming\n",
           base: null,
+          current: null,
+          incoming: null,
           humanResult: "other\n",
         },
       ],
@@ -53,6 +57,8 @@ describe("replayConflicts", () => {
           path: "file.ts",
           conflicted: "<<<<<<< current\nleft\n=======\nright\n>>>>>>> incoming\n",
           base: null,
+          current: null,
+          incoming: null,
           humanResult: "left\n",
         },
       ],
@@ -71,6 +77,8 @@ describe("replayConflicts", () => {
           path: "file.ts",
           conflicted: "keep\n<<<<<<< current\nkeep-line\n=======\nchanged\n>>>>>>> incoming\n",
           base: "keep\nkeep-line\n",
+          current: null,
+          incoming: null,
           humanResult: "keep\nchanged\n",
         },
       ],
@@ -94,6 +102,8 @@ describe("replayConflicts", () => {
           path: "file.ts",
           conflicted: "<<<<<<< current\nsame\n=======\nsame\n>>>>>>> incoming\n",
           base: null,
+          current: null,
+          incoming: null,
           humanResult: "same\n",
         },
       ],
@@ -103,6 +113,55 @@ describe("replayConflicts", () => {
     );
     expect(report.predicted).toBe(1);
     expect(report.rows[0]?.correct).toBe(true);
+  });
+
+  it("merges the stored parent files when a hunk is only part of a program", async () => {
+    const base =
+      "export function score(value: number) {\n  const total = value + 1;\n  const extra = value + 2;\n  return total + extra;\n}\n";
+    const current =
+      "export function score(value: number) {\n  const total = value + 10;\n  const extra = value + 2;\n  return total + extra;\n}\n";
+    const incoming =
+      "export function score(value: number) {\n  const total = value + 1;\n  const extra = value + 20;\n  return total + extra;\n}\n";
+    const humanResult =
+      "export function score(value: number) {\n  const total = value + 10;\n  const extra = value + 20;\n  return total + extra;\n}\n";
+    const conflicted =
+      "prefix\n<<<<<<< current\n    return value + 10;\n  }\n=======\n    return value + 20;\n  }\n>>>>>>> incoming\nsuffix\n";
+    const report = await replayConflicts([
+      {
+        repository: "sample",
+        path: "file.ts",
+        conflicted,
+        base,
+        current,
+        incoming,
+        humanResult,
+      },
+    ]);
+    expect(report.predicted).toBe(1);
+    expect(report.rows[0]).toEqual({
+      repository: "sample",
+      confidence: 0.99,
+      correct: true,
+      confidenceSource: "fixed-proposal",
+    });
+  });
+
+  it("leaves a fragment unresolved when the parent files were not stored", async () => {
+    const conflicted =
+      "prefix\n<<<<<<< current\n    return value + 10;\n  }\n=======\n    return value + 20;\n  }\n>>>>>>> incoming\nsuffix\n";
+    const report = await replayConflicts([
+      {
+        repository: "sample",
+        path: "file.ts",
+        conflicted,
+        base: "export function score(value: number) {\n  const total = value + 1;\n  const extra = value + 2;\n  return total + extra;\n}\n",
+        current: null,
+        incoming: null,
+        humanResult: "export function score(value: number) {\n  return 0;\n}\n",
+      },
+    ]);
+    expect(report.rows).toEqual([]);
+    expect(report.unresolved).toBe(1);
   });
 
   it("returns an empty report for no conflicts", async () => {
