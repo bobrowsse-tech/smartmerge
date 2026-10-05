@@ -8,7 +8,7 @@ import type {
 import { replaceHunk } from "./apply.js";
 import { buildConflict } from "./conflicts.js";
 import { initParsers, isStructuralLanguage, parseSource, parsersReady } from "./parse.js";
-import { proposeForFile } from "./strategies.js";
+import { proposeForFile, structuralScore } from "./strategies.js";
 import { mergeRegions } from "./structure.js";
 import { verifyParsed } from "./verify.js";
 
@@ -25,6 +25,7 @@ const operation: OperationContext = {
  * Apply the current proposal to each conflicted file and compare the exact text with the committed file.
  * A file is a row when every hunk has a recommendation, or when the three stored files merge as a whole.
  * Confidence is the lowest hunk score, or the fixed structural score for a whole-file merge.
+ * A JSON whole-file merge stays in the high band until a replay corpus exists.
  * The merge-base file is passed through when it was stored, so a one-side change does not need diff3 markers.
  * A parser that fails to load leaves structural recommendations unavailable. Line strategies still run.
  */
@@ -127,7 +128,7 @@ function wholeFileMerge(conflict: ReplayConflict, languageId: string | null): Re
   if (verified.hazardous) return null;
   return {
     repository: conflict.repository.trim(),
-    confidence: 0.99,
+    confidence: structuralScore(languageId, false).confidence,
     correct: merged === conflict.humanResult,
     confidenceSource: "fixed-proposal",
   };

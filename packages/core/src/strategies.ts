@@ -20,6 +20,19 @@ import { normalizeWhitespace } from "./whitespace.js";
  */
 const UNCHECKED_CAP = 0.8;
 
+/**
+ * Fixed score for a structural result after syntax and symbol checks.
+ * JSON stays in the high band until a replay corpus exists, so a clean merge is not marked certain.
+ */
+export function structuralScore(
+  languageId: string,
+  hazardous: boolean,
+): { confidence: number; band: ConfidenceBand } {
+  if (hazardous) return { confidence: 0.2, band: "low" };
+  if (languageId === "json") return { confidence: 0.95, band: "high" };
+  return { confidence: 0.99, band: "certain" };
+}
+
 const NOT_RUN: Check[] = [
   { kind: "syntax", status: "unknown", diagnostics: [], durationMs: 0, reason: "not-run" },
   { kind: "symbols", status: "unknown", diagnostics: [], durationMs: 0, reason: "not-run" },
@@ -141,10 +154,15 @@ function structuralCandidates(file: ConflictFile, hunk: ConflictHunk): Candidate
                 code: "import-union",
                 text: "Import names from both sides are kept. Existing order is preserved because no project sort convention was read.",
               }
-            : {
-                code: "disjoint-nodes",
-                text: "Each side edited different declarations. Untouched text is copied from the base.",
-              },
+            : file.languageId === "json"
+              ? {
+                  code: "json-keys",
+                  text: "Each side edited different object keys. Untouched text is copied from the base.",
+                }
+              : {
+                  code: "disjoint-nodes",
+                  text: "Each side edited different declarations. Untouched text is copied from the base.",
+                },
         ),
       );
     }
@@ -175,8 +193,8 @@ function checkedCandidate(
   evidence: { code: string; text: string },
 ): Candidate {
   const verified = verifyParsed(file.path, parsed, current, incoming);
-  const confidence = verified.hazardous ? 0.2 : 0.99;
-  const band: ConfidenceBand = verified.hazardous ? "low" : "certain";
+  const scored = structuralScore(file.languageId ?? "", verified.hazardous);
+  const { confidence, band } = scored;
   return {
     id: `${hunk.id}:${strategy}`,
     hunkId: hunk.id,

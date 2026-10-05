@@ -58,7 +58,13 @@ export interface ParsedSource {
   identifiers: IdentifierSpan[];
 }
 
-const SUPPORTED = new Set(["typescript", "typescriptreact", "javascript", "javascriptreact"]);
+const SUPPORTED = new Set([
+  "typescript",
+  "typescriptreact",
+  "javascript",
+  "javascriptreact",
+  "json",
+]);
 
 const GLOBALS = new Set([
   "Array",
@@ -154,11 +160,15 @@ async function loadParsers(): Promise<void> {
   const javascript = await Language.load(
     grammar("tree-sitter-javascript/tree-sitter-javascript.wasm", "tree-sitter-javascript.wasm"),
   );
+  const json = await Language.load(
+    grammar("tree-sitter-json/tree-sitter-json.wasm", "tree-sitter-json.wasm"),
+  );
   languages = new Map<string, Language>([
     ["typescript", typescript],
     ["typescriptreact", tsx],
     ["javascript", javascript],
     ["javascriptreact", javascript],
+    ["json", json],
   ]);
 }
 
@@ -237,6 +247,11 @@ function innerDeclaration(node: SyntaxNode): SyntaxNode | null {
 }
 
 function keyFor(node: SyntaxNode): { key: string; stable: boolean } {
+  if (node.type === "pair") {
+    const key = node.childForFieldName("key");
+    const text = key?.text ?? "";
+    return { key: `pair:${text}`, stable: text.length > 0 };
+  }
   if (node.type === "import_statement") {
     const moduleName = node.descendantsOfType("string")[0];
     return { key: `import:${moduleName?.text ?? ""}`, stable: true };
@@ -254,9 +269,22 @@ function keyFor(node: SyntaxNode): { key: string; stable: boolean } {
   return { key: node.type, stable: false };
 }
 
+function objectInterior(
+  object: SyntaxNode,
+): { parent: SyntaxNode; start: number; end: number } | null {
+  if (object.type !== "object" || object.endIndex - object.startIndex < 2) return null;
+  return { parent: object, start: object.startIndex + 1, end: object.endIndex - 1 };
+}
+
 function containerRange(
   node: SyntaxNode,
 ): { parent: SyntaxNode; start: number; end: number } | null {
+  if (node.type === "object") return objectInterior(node);
+  if (node.type === "pair") {
+    const value = node.childForFieldName("value");
+    if (!value || value.type !== "object") return null;
+    return objectInterior(value);
+  }
   if (node.type === "import_statement") {
     const named = node.descendantsOfType("named_imports")[0];
     if (!named) return null;
@@ -404,6 +432,28 @@ function collectSymbols(root: SyntaxNode): ParseIssue[] {
         }
         if (args) {
           for (const argument of args.namedChildren) visit(argument);
+        }
+        return;
+      }
+      case "object": {
+        const seen = new Set<string>();
+        for (const child of node.namedChildren) {
+          if (child.type !== "pair") {
+            visit(child);
+            continue;
+          }
+          const key = child.childForFieldName("key");
+          const text = key?.text ?? "";
+          if (text.length > 0 && seen.has(text)) {
+            issues.push({
+              line: child.startPosition.row + 1,
+              message: `Duplicate key ${text}`,
+              code: "duplicate",
+            });
+          }
+          if (text.length > 0) seen.add(text);
+          const value = child.childForFieldName("value");
+          if (value) visit(value);
         }
         return;
       }
