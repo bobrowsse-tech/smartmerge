@@ -62,6 +62,20 @@ function parseConflicts(input: unknown): ReplayConflict[] {
     if (record.base !== undefined && record.base !== null && typeof record.base !== "string") {
       throw new Error("base must be a string or null.");
     }
+    if (
+      record.current !== undefined &&
+      record.current !== null &&
+      typeof record.current !== "string"
+    ) {
+      throw new Error("current must be a string or null.");
+    }
+    if (
+      record.incoming !== undefined &&
+      record.incoming !== null &&
+      typeof record.incoming !== "string"
+    ) {
+      throw new Error("incoming must be a string or null.");
+    }
     if (record.humanResult !== null && typeof record.humanResult !== "string") {
       throw new Error("humanResult must be a string or null.");
     }
@@ -70,6 +84,8 @@ function parseConflicts(input: unknown): ReplayConflict[] {
       path,
       conflicted: record.conflicted,
       base: typeof record.base === "string" ? record.base : null,
+      current: typeof record.current === "string" ? record.current : null,
+      incoming: typeof record.incoming === "string" ? record.incoming : null,
       humanResult: record.humanResult,
     };
   });

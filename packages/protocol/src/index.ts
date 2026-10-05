@@ -465,6 +465,8 @@ export interface LlmProvider {
  * One fetched conflict at file grain.
  * `conflicted` still contains the merge markers.
  * `base` is the merge-base file, or null when that path did not exist there.
+ * `current` is the first parent file, or null when that parent did not have it.
+ * `incoming` is the second parent file, or null when that parent did not have it.
  * `humanResult` is the file the merge committed, or null when the merge removed it.
  */
 export interface ReplayConflict {
@@ -472,6 +474,8 @@ export interface ReplayConflict {
   path: string;
   conflicted: string;
   base: string | null;
+  current: string | null;
+  incoming: string | null;
   humanResult: string | null;
 }
 
