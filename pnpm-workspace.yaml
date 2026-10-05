@@ -11,4 +11,5 @@ allowBuilds:
   keytar: false
   # Grammars ship prebuilt wasm. The native binding script is not required.
   tree-sitter-javascript: false
+  tree-sitter-json: false
   tree-sitter-typescript: false
