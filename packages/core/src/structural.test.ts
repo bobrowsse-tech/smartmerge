@@ -184,6 +184,39 @@ describe("structural strategies", () => {
     );
   });
 
+  it("merges keys added to an empty JSON object", () => {
+    const chosen = proposalForLanguage("json", "data.json", "{}\n", '{ "a": 1 }\n', '{ "b": 2 }\n');
+    expect(chosen?.recommended).toBe("hunk:1:structural-3way");
+    expect(chosen?.candidates[0]?.result).toBe('{ "a": 1, "b": 2 }\n');
+    expect(chosen?.candidates[0]?.band).toBe("high");
+  });
+
+  it("drops the comma of a deleted first JSON key", () => {
+    const chosen = proposalForLanguage(
+      "json",
+      "data.json",
+      '{\n  "a": 1,\n  "b": 2\n}\n',
+      '{\n  "b": 2\n}\n',
+      '{\n  "a": 1,\n  "b": 2,\n  "c": 3\n}\n',
+    );
+    expect(chosen?.candidates[0]?.result).toBe('{\n  "b": 2,\n  "c": 3\n}\n');
+    expect(chosen?.candidates[0]?.band).toBe("high");
+  });
+
+  it("treats an escaped JSON key as the same key", () => {
+    const chosen = proposalForLanguage(
+      "json",
+      "data.json",
+      '{ "a": 1 }\n',
+      '{ "a": 2 }\n',
+      '{ "\\u0061": 3 }\n',
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
   it("does not merge JSON arrays by position when both sides change length", () => {
     const chosen = proposalForLanguage("json", "data.json", "[1]\n", "[1, 2]\n", "[1, 3]\n");
     expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
@@ -231,9 +264,17 @@ describe("breakage checks", () => {
   it("flags a repeated JSON object key", () => {
     const clean = parseSource("json", '{ "a": 1, "b": 2 }\n');
     const duplicated = parseSource("json", '{ "a": 1, "a": 2 }\n');
-    if (!clean || !duplicated) throw new Error("parser unavailable");
+    const escaped = parseSource("json", '{ "a": 1, "\\u0061": 2 }\n');
+    if (!clean || !duplicated || !escaped) throw new Error("parser unavailable");
     expect(duplicated.hasErrors).toBe(false);
     expect(duplicated.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(escaped.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
     expect(verifyParsed("data.json", duplicated, clean, clean).hazardous).toBe(true);
+  });
+
+  it("allows a repeated key in a JavaScript object literal", () => {
+    const parsed = parseSource("javascript", "const value = { a: 1, a: 2 };\n");
+    expect(parsed?.hasErrors).toBe(false);
+    expect(parsed?.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
   });
 });

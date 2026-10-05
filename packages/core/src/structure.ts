@@ -24,11 +24,28 @@ export function mergeRegions(
   const incomingMap = new Map(incomingList.map((item) => [item.key, item.node]));
   const emitted = new Set<string>();
   const parts: string[] = [];
+  let previousPair = false;
 
   const emit = (key: string): boolean => {
     if (emitted.has(key)) return true;
-    const piece = mergeKey(baseMap.get(key), currentMap.get(key), incomingMap.get(key));
+    const node = currentMap.get(key) ?? incomingMap.get(key) ?? baseMap.get(key);
+    let piece = mergeKey(baseMap.get(key), currentMap.get(key), incomingMap.get(key));
     if (piece === null) return false;
+    if (piece !== OMIT && node?.type === "pair") {
+      // Commas sit on the following pair. The first kept pair must not keep a
+      // comma that belonged to a deleted predecessor, and a newly adjacent pair
+      // needs a comma when neither slice already has one.
+      if (!previousPair) piece = stripLeadingComma(piece);
+      else {
+        const previous = parts[parts.length - 1];
+        if (previous !== undefined && needsPairComma(previous, piece)) {
+          parts[parts.length - 1] = insertComma(previous);
+        }
+      }
+      previousPair = true;
+    } else if (piece !== OMIT) {
+      previousPair = false;
+    }
     if (piece !== OMIT) parts.push(piece);
     emitted.add(key);
     return true;
@@ -230,6 +247,24 @@ function assignKeys(
     if (occurrence > 0) key = `${key}#${String(occurrence + 1)}`;
     return { key, node };
   });
+}
+
+function stripLeadingComma(slice: string): string {
+  return slice.replace(/^(\s*),/, "$1");
+}
+
+function needsPairComma(previous: string, next: string): boolean {
+  const prev = previous.trimEnd();
+  const nxt = next.trimStart();
+  if (prev.length === 0 || nxt.length === 0) return false;
+  if (prev.endsWith(",")) return false;
+  if (nxt.startsWith(",")) return false;
+  return true;
+}
+
+function insertComma(previous: string): string {
+  const end = previous.trimEnd();
+  return `${end},${previous.slice(end.length)}`;
 }
 
 function leading(node: ConcreteNode): string {

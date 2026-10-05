@@ -190,9 +190,9 @@ export function parseSource(languageId: string, source: string): ParsedSource | 
   const root = tree.rootNode;
   const parsed: ParsedSource = {
     hasErrors: false,
-    region: regionOf(source, root, root.startIndex, root.endIndex),
+    region: regionOf(languageId, source, root, root.startIndex, root.endIndex),
     syntaxIssues: collectSyntax(root),
-    symbolIssues: collectSymbols(root),
+    symbolIssues: collectSymbols(languageId, root),
     identifiers: collectIdentifiers(root),
   };
   parsed.hasErrors = parsed.syntaxIssues.length > 0;
@@ -200,22 +200,28 @@ export function parseSource(languageId: string, source: string): ParsedSource | 
   return parsed;
 }
 
-function regionOf(source: string, parent: SyntaxNode, start: number, end: number): ConcreteRegion {
+function regionOf(
+  languageId: string,
+  source: string,
+  parent: SyntaxNode,
+  start: number,
+  end: number,
+): ConcreteRegion {
   const children = parent.namedChildren.filter(
     (child) => child.startIndex >= start && child.endIndex <= end,
   );
   const nodes: ConcreteNode[] = [];
   let cursor = start;
   for (const child of children) {
-    nodes.push(toNode(source, child, source.slice(cursor, child.endIndex)));
+    nodes.push(toNode(languageId, source, child, source.slice(cursor, child.endIndex)));
     cursor = child.endIndex;
   }
   return { nodes, trailing: source.slice(cursor, end) };
 }
 
-function toNode(source: string, node: SyntaxNode, slice: string): ConcreteNode {
+function toNode(languageId: string, source: string, node: SyntaxNode, slice: string): ConcreteNode {
   const declared = node.type === "export_statement" ? (innerDeclaration(node) ?? node) : node;
-  const key = keyFor(declared);
+  const key = keyFor(languageId, declared);
   const body = source.slice(node.startIndex, node.endIndex);
   const inner = containerRange(declared);
   if (!inner) {
@@ -238,7 +244,7 @@ function toNode(source: string, node: SyntaxNode, slice: string): ConcreteNode {
     slice,
     prefix: source.slice(node.startIndex, inner.start),
     suffix: source.slice(inner.end, node.endIndex),
-    children: regionOf(source, inner.parent, inner.start, inner.end),
+    children: regionOf(languageId, source, inner.parent, inner.start, inner.end),
   };
 }
 
@@ -246,10 +252,11 @@ function innerDeclaration(node: SyntaxNode): SyntaxNode | null {
   return node.namedChildren.find((child) => child.type !== "comment") ?? null;
 }
 
-function keyFor(node: SyntaxNode): { key: string; stable: boolean } {
+function keyFor(languageId: string, node: SyntaxNode): { key: string; stable: boolean } {
   if (node.type === "pair") {
     const key = node.childForFieldName("key");
-    const text = key?.text ?? "";
+    const raw = key?.text ?? "";
+    const text = languageId === "json" ? (decodeJsonString(raw) ?? raw) : raw;
     return { key: `pair:${text}`, stable: text.length > 0 };
   }
   if (node.type === "import_statement") {
@@ -342,7 +349,18 @@ interface Binding {
   arity: number | null;
 }
 
-function collectSymbols(root: SyntaxNode): ParseIssue[] {
+/** Decode a JSON string token. Returns null when the token is not a JSON string. */
+function decodeJsonString(token: string): string | null {
+  if (token.length < 2 || !token.startsWith('"') || !token.endsWith('"')) return null;
+  try {
+    const value: unknown = JSON.parse(token);
+    return typeof value === "string" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   const issues: ParseIssue[] = [];
   const scopes: Array<Map<string, Binding>> = [new Map<string, Binding>()];
 
@@ -436,6 +454,10 @@ function collectSymbols(root: SyntaxNode): ParseIssue[] {
         return;
       }
       case "object": {
+        if (languageId !== "json") {
+          for (const child of node.namedChildren) visit(child);
+          return;
+        }
         const seen = new Set<string>();
         for (const child of node.namedChildren) {
           if (child.type !== "pair") {
@@ -443,11 +465,12 @@ function collectSymbols(root: SyntaxNode): ParseIssue[] {
             continue;
           }
           const key = child.childForFieldName("key");
-          const text = key?.text ?? "";
+          const raw = key?.text ?? "";
+          const text = decodeJsonString(raw) ?? raw;
           if (text.length > 0 && seen.has(text)) {
             issues.push({
               line: child.startPosition.row + 1,
-              message: `Duplicate key ${text}`,
+              message: `Duplicate key ${JSON.stringify(text)}`,
               code: "duplicate",
             });
           }
