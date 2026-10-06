@@ -280,6 +280,9 @@ function languageIdFor(path: string): string | null {
       return "rust";
     case "java":
       return "java";
+    case "kt":
+    case "kts":
+      return "kotlin";
     default:
       return null;
   }

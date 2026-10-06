@@ -241,6 +241,28 @@ describe("replayConflicts", () => {
     });
   });
 
+  it("keeps a Kotlin whole-file merge in the high band", async () => {
+    const report = await replayConflicts([
+      {
+        repository: "sample",
+        path: "Box.kt",
+        conflicted:
+          "prefix\n<<<<<<< current\n    return (\n=======\n    return [\n>>>>>>> incoming\nsuffix\n",
+        base: "fun alpha(): Int = 1\n\nfun beta(): Int = 1\n",
+        current: "fun alpha(): Int = 2\n\nfun beta(): Int = 1\n",
+        incoming: "fun alpha(): Int = 1\n\nfun beta(): Int = 3\n",
+        humanResult: "fun alpha(): Int = 2\n\nfun beta(): Int = 3\n",
+      },
+    ]);
+    expect(report.predicted).toBe(1);
+    expect(report.rows[0]).toEqual({
+      repository: "sample",
+      confidence: 0.95,
+      correct: true,
+      confidenceSource: "fixed-proposal",
+    });
+  });
+
   it("keeps a Java whole-file merge in the high band", async () => {
     const report = await replayConflicts([
       {

@@ -559,6 +559,98 @@ describe("structural strategies", () => {
     );
   });
 
+  it("merges Kotlin functions that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "kotlin",
+      "Funs.kt",
+      "fun alpha(): Int = 1\n\nfun beta(): Int = 1\n",
+      "fun alpha(): Int = 2\n\nfun beta(): Int = 1\n",
+      "fun alpha(): Int = 1\n\nfun beta(): Int = 3\n",
+    );
+    expect(chosen?.recommended).toBe("hunk:1:structural-3way");
+    expect(chosen?.candidates[0]).toMatchObject({
+      result: "fun alpha(): Int = 2\n\nfun beta(): Int = 3\n",
+      band: "high",
+      confidence: 0.95,
+      hazardous: false,
+      evidence: [
+        {
+          code: "kotlin-defs",
+          text: "Each side edited different types or functions. Untouched text is copied from the base.",
+        },
+      ],
+    });
+    expect(chosen?.autoApplyEligible).toBe(false);
+  });
+
+  it("keeps functions added on each side of the same Kotlin class", () => {
+    const chosen = proposalForLanguage(
+      "kotlin",
+      "Box.kt",
+      "class Box {\n  fun left(): Int = 1\n}\n",
+      "class Box {\n  fun left(): Int = 1\n  fun right(): Int = 2\n}\n",
+      "class Box {\n  fun left(): Int = 1\n  fun top(): Int = 3\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "class Box {\n  fun left(): Int = 1\n  fun right(): Int = 2\n  fun top(): Int = 3\n}\n",
+    );
+    expect(chosen?.candidates[0]?.band).toBe("high");
+  });
+
+  it("merges a Kotlin class, interface, and object when each side edits a different member", () => {
+    const chosen = proposalForLanguage(
+      "kotlin",
+      "Types.kt",
+      'class Box {\n  fun left(): Int = 1\n}\ninterface Bag {\n  fun size(): Int\n}\nobject Hue {\n  fun name(): String = "red"\n}\n',
+      'class Box {\n  fun left(): Int = 2\n}\ninterface Bag {\n  fun size(): Int\n}\nobject Hue {\n  fun name(): String = "red"\n}\n',
+      'class Box {\n  fun left(): Int = 1\n}\ninterface Bag {\n  fun size(): Int\n}\nobject Hue {\n  fun name(): String = "blue"\n}\n',
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      'class Box {\n  fun left(): Int = 2\n}\ninterface Bag {\n  fun size(): Int\n}\nobject Hue {\n  fun name(): String = "blue"\n}\n',
+    );
+  });
+
+  it("keeps functions with the same name on different Kotlin types", () => {
+    const chosen = proposalForLanguage(
+      "kotlin",
+      "Types.kt",
+      "class Box {\n  fun left(): Int = 1\n}\nclass Bag {\n  fun left(): Int = 1\n}\n",
+      "class Box {\n  fun left(): Int = 2\n}\nclass Bag {\n  fun left(): Int = 1\n}\n",
+      "class Box {\n  fun left(): Int = 1\n}\nclass Bag {\n  fun left(): Int = 3\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "class Box {\n  fun left(): Int = 2\n}\nclass Bag {\n  fun left(): Int = 3\n}\n",
+    );
+  });
+
+  it("does not merge Kotlin properties by position", () => {
+    const chosen = proposalForLanguage(
+      "kotlin",
+      "Box.kt",
+      "class Box {\n  val x = 1\n  val y = 1\n}\n",
+      "class Box {\n  val x = 2\n  val y = 1\n}\n",
+      "class Box {\n  val x = 1\n  val y = 3\n}\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge a Kotlin function that both sides change", () => {
+    const chosen = proposalForLanguage(
+      "kotlin",
+      "Box.kt",
+      "class Box {\n  fun left(): Int = 1\n}\n",
+      "class Box {\n  fun left(): Int = 2\n}\n",
+      "class Box {\n  fun left(): Int = 3\n}\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
   it("does not merge a Python function that both sides change", () => {
     const chosen = proposalForLanguage(
       "python",
@@ -591,6 +683,7 @@ describe("structural languages", () => {
     expect(STRUCTURAL_LANGUAGES).toContain("yaml");
     expect(STRUCTURAL_LANGUAGES).toContain("go");
     expect(STRUCTURAL_LANGUAGES).toContain("java");
+    expect(STRUCTURAL_LANGUAGES).toContain("kotlin");
     for (const languageId of STRUCTURAL_LANGUAGES) {
       expect(isStructuralLanguage(languageId)).toBe(true);
     }
@@ -645,6 +738,25 @@ describe("breakage checks", () => {
     expect(quoted.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
     expect(hex.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
     expect(verifyParsed("data.yaml", duplicated, clean, clean).hazardous).toBe(true);
+  });
+
+  it("flags a repeated Kotlin function and ignores an undeclared call", () => {
+    const clean = parseSource("kotlin", "fun alpha(): Int = 1\n");
+    const duplicated = parseSource(
+      "kotlin",
+      "class Box {\n  fun left(): Int = 1\n  fun left(): Int = 2\n}\n",
+    );
+    const differentType = parseSource(
+      "kotlin",
+      "class Box {\n  fun left(): Int = 1\n}\nclass Bag {\n  fun left(): Int = 2\n}\n",
+    );
+    const called = parseSource("kotlin", "class Box {\n  fun left(): Int = missing()\n}\n");
+    if (!clean || !duplicated || !differentType || !called) throw new Error("parser unavailable");
+    expect(duplicated.hasErrors).toBe(false);
+    expect(duplicated.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(differentType.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
+    expect(called.symbolIssues.some((issue) => issue.code === "undeclared")).toBe(false);
+    expect(verifyParsed("Box.kt", duplicated, clean, clean).hazardous).toBe(true);
   });
 
   it("flags a repeated Java method and ignores an undeclared call", () => {

@@ -117,7 +117,9 @@ Go functions merge by name. Methods merge by receiver type and name, so two meth
 
 Java classes, interfaces, and enums merge by name. A nested type includes its enclosing type, so two nested types with the same simple name stay distinct. Methods and constructors merge by enclosing type and name. A method or constructor that both sides change is left alone, including two overloads of the same name. Fields and statements are not merged by position. A clean Java structural result stays in the high confidence band until a Java replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
 
-Tier 2: Kotlin, C#, Rust. Python functions and classes, Go functions and methods, and Java types and methods are covered above.
+Kotlin classes, interfaces, and objects merge by name. A nested type includes its enclosing type. Functions merge by name, and a function inside a type includes that type. A function that both sides change is left alone. Properties and statements are not merged by position. A clean Kotlin structural result stays in the high confidence band until a Kotlin replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
+
+Tier 2: C#, Rust. Python functions and classes, Go functions and methods, Java types and methods, and Kotlin types and functions are covered above.
 Tier 3: C/C++, PHP, Ruby, Swift, SQL, TOML, XML.
 Unsupported: line-based strategies only, confidence caps apply.
 

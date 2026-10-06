@@ -17,3 +17,4 @@ allowBuilds:
   tree-sitter-python: false
   tree-sitter-go: false
   tree-sitter-java: false
+  "@tree-sitter-grammars/tree-sitter-kotlin": false

@@ -2,7 +2,7 @@
   "name": "@smartmerge/core",
   "version": "0.0.0",
   "private": true,
-  "description": "Merge pipeline. Recommends deterministic and structural resolutions for TypeScript, JavaScript, JSON, YAML, Python, Go, and Java.",
+  "description": "Merge pipeline. Recommends deterministic and structural resolutions for TypeScript, JavaScript, JSON, YAML, Python, Go, Java, and Kotlin.",
   "license": "MPL-2.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@smartmerge/protocol": "workspace:*",
+    "@tree-sitter-grammars/tree-sitter-kotlin": "1.1.0",
     "@tree-sitter-grammars/tree-sitter-yaml": "0.7.1",
     "eslint": "^10.11.0",
     "tree-sitter-go": "0.25.0",
