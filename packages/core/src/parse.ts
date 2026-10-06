@@ -34,6 +34,11 @@ export interface ConcreteNode {
   key: string;
   stable: boolean;
   type: string;
+  /**
+   * When false, an unstable node is not aligned by position.
+   * Python statements use this so two assignments are not merged just because they line up.
+   */
+  positional: boolean;
   body: string;
   slice: string;
   /** Text from the start of `body` through the opening delimiter of `children`. */
@@ -58,7 +63,8 @@ export interface ParsedSource {
   identifiers: IdentifierSpan[];
 }
 
-const SUPPORTED = new Set([
+/** Language ids with a structural parser, in advertisement order. */
+export const STRUCTURAL_LANGUAGES = [
   "typescript",
   "typescriptreact",
   "javascript",
@@ -66,7 +72,9 @@ const SUPPORTED = new Set([
   "json",
   "yaml",
   "python",
-]);
+] as const;
+
+const SUPPORTED = new Set<string>(STRUCTURAL_LANGUAGES);
 
 const GLOBALS = new Set([
   "Array",
@@ -242,6 +250,7 @@ function toNode(languageId: string, source: string, node: SyntaxNode, slice: str
       key: key.key,
       stable: key.stable,
       type: declared.type,
+      positional: key.stable || languageId !== "python",
       body,
       slice,
       prefix: "",
@@ -253,6 +262,7 @@ function toNode(languageId: string, source: string, node: SyntaxNode, slice: str
     key: key.key,
     stable: key.stable,
     type: declared.type,
+    positional: key.stable || languageId !== "python",
     body,
     slice,
     prefix: source.slice(node.startIndex, inner.start),
@@ -348,7 +358,7 @@ function containerRange(
   node: SyntaxNode,
 ): { parent: SyntaxNode; start: number; end: number } | null {
   const defined = pythonDefinition(node);
-  if (defined) {
+  if (defined?.type === "class_definition") {
     const body = defined.childForFieldName("body");
     if (!body || body.type !== "block" || body.endIndex <= body.startIndex) return null;
     return { parent: body, start: body.startIndex, end: body.endIndex };

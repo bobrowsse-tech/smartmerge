@@ -1,6 +1,6 @@
 import type { ConflictFile, ConflictHunk, OperationContext } from "@smartmerge/protocol";
 import { beforeAll, describe, expect, it } from "vitest";
-import { initParsers, parseSource } from "./parse.js";
+import { STRUCTURAL_LANGUAGES, initParsers, isStructuralLanguage, parseSource } from "./parse.js";
 import { proposeForFile } from "./strategies.js";
 import { verifyParsed } from "./verify.js";
 
@@ -360,6 +360,33 @@ describe("structural strategies", () => {
     expect(chosen?.candidates[0]?.band).toBe("high");
   });
 
+  it("does not merge Python assignments by position", () => {
+    const chosen = proposalForLanguage(
+      "python",
+      "mod.py",
+      "x = 1\ny = 1\n",
+      "x = 2\ny = 1\n",
+      "x = 1\ny = 3\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge different statements inside one Python function", () => {
+    const chosen = proposalForLanguage(
+      "python",
+      "mod.py",
+      "def alpha():\n    x = 1\n    y = 1\n",
+      "def alpha():\n    x = 2\n    y = 1\n",
+      "def alpha():\n    x = 1\n    y = 3\n",
+    );
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
   it("does not merge a Python function that both sides change", () => {
     const chosen = proposalForLanguage(
       "python",
@@ -382,6 +409,17 @@ describe("structural strategies", () => {
     );
     expect(chosen?.recommended).toBeNull();
     expect(chosen?.autoApplyEligible).toBe(false);
+  });
+});
+
+describe("structural languages", () => {
+  it("advertises every language the parser can load", () => {
+    expect(STRUCTURAL_LANGUAGES).toContain("python");
+    expect(STRUCTURAL_LANGUAGES).toContain("json");
+    expect(STRUCTURAL_LANGUAGES).toContain("yaml");
+    for (const languageId of STRUCTURAL_LANGUAGES) {
+      expect(isStructuralLanguage(languageId)).toBe(true);
+    }
   });
 });
 

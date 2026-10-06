@@ -111,7 +111,7 @@ JSON objects merge by key. A comma is inserted when two keys become neighbors, a
 
 YAML mappings merge by key the same way. Sequences stay order-sensitive. A plain key and a quoted spelling of the same text match, including a hex escape in a double-quoted key. An added key in a flow mapping stays before a trailing comment. A clean YAML structural result stays in the high confidence band until a YAML replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
 
-Python functions and classes merge by name. Methods added on each side of the same class are kept. A function or class that both sides change is left alone. A clean Python structural result stays in the high confidence band until a Python replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
+Python functions and classes merge by name. Methods added on each side of the same class are kept. A function or class that both sides change is left alone. Assignments and other statements are not merged by position. A clean Python structural result stays in the high confidence band until a Python replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
 
 Tier 2: Go, Java, Kotlin, C#, Rust. Python functions and classes are covered above.
 Tier 3: C/C++, PHP, Ruby, Swift, SQL, TOML, XML.

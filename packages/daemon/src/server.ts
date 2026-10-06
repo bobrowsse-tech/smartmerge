@@ -14,7 +14,13 @@ import type {
   VerifyResult,
 } from "@smartmerge/protocol";
 import { PROTOCOL_VERSION } from "@smartmerge/protocol";
-import { buildConflict, defaultConfig, replaceHunk, summarizeDashboard } from "@smartmerge/core";
+import {
+  STRUCTURAL_LANGUAGES,
+  buildConflict,
+  defaultConfig,
+  replaceHunk,
+  summarizeDashboard,
+} from "@smartmerge/core";
 import {
   appendSessionLog,
   backupWorkingFile,
@@ -80,7 +86,7 @@ export class DaemonServer {
     return {
       serverVersion: SERVER_VERSION,
       protocolVersion: PROTOCOL_VERSION,
-      supportedLanguages: ["typescript", "typescriptreact", "javascript", "javascriptreact"],
+      supportedLanguages: [...STRUCTURAL_LANGUAGES],
       config: this.config,
     };
   }
