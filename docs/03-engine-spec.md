@@ -127,8 +127,10 @@ C functions and prototypes merge by name. A prototype and a definition of the sa
 
 C++ functions and methods merge by name. Overloads stay distinct by parameter types, not parameter names. Classes, structs, namespaces, and enums merge by name. Constructors and destructors merge by name. A function or other item that both sides change is left alone. Fields and statements are not merged by position. A clean C++ structural result stays in the high confidence band until a C++ replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
 
+PHP functions and methods merge by name. Classes, interfaces, traits, and enums merge by name. A braced namespace is named, and the functions and classes inside it merge. A constant with one name merges by that name. A function or other item that both sides change is left alone. Properties, statements, and use declarations are not merged by position. A clean PHP structural result stays in the high confidence band until a PHP replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
+
 Tier 2: Python functions and classes, Go functions and methods, Java types and methods, Kotlin types and functions, C# types and methods, and Rust items are covered above.
-Tier 3: C and C++ are covered above. PHP, Ruby, Swift, SQL, TOML, and XML remain.
+Tier 3: C, C++, and PHP are covered above. Ruby, Swift, SQL, TOML, and XML remain.
 Unsupported: line-based strategies only, confidence caps apply.
 
 ## Failure handling

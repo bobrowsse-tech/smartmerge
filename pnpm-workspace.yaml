@@ -22,3 +22,4 @@ allowBuilds:
   tree-sitter-rust: false
   tree-sitter-c: false
   tree-sitter-cpp: false
+  tree-sitter-php: false
