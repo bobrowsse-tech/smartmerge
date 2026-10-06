@@ -194,6 +194,28 @@ describe("replayConflicts", () => {
     });
   });
 
+  it("keeps a Python whole-file merge in the high band", async () => {
+    const report = await replayConflicts([
+      {
+        repository: "sample",
+        path: "mod.py",
+        conflicted:
+          "prefix\n<<<<<<< current\n    return (\n=======\n    yield (\n>>>>>>> incoming\nsuffix\n",
+        base: "def alpha():\n    return 1\n\ndef beta():\n    return 1\n",
+        current: "def alpha():\n    return 2\n\ndef beta():\n    return 1\n",
+        incoming: "def alpha():\n    return 1\n\ndef beta():\n    return 3\n",
+        humanResult: "def alpha():\n    return 2\n\ndef beta():\n    return 3\n",
+      },
+    ]);
+    expect(report.predicted).toBe(1);
+    expect(report.rows[0]).toEqual({
+      repository: "sample",
+      confidence: 0.95,
+      correct: true,
+      confidenceSource: "fixed-proposal",
+    });
+  });
+
   it("leaves a fragment unresolved when the parent files were not stored", async () => {
     const conflicted =
       "prefix\n<<<<<<< current\n    return value + 10;\n  }\n=======\n    return value + 20;\n  }\n>>>>>>> incoming\nsuffix\n";

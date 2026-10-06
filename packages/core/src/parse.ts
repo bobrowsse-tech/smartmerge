@@ -65,6 +65,7 @@ const SUPPORTED = new Set([
   "javascriptreact",
   "json",
   "yaml",
+  "python",
 ]);
 
 const GLOBALS = new Set([
@@ -170,6 +171,9 @@ async function loadParsers(): Promise<void> {
       "tree-sitter-yaml.wasm",
     ),
   );
+  const python = await Language.load(
+    grammar("tree-sitter-python/tree-sitter-python.wasm", "tree-sitter-python.wasm"),
+  );
   languages = new Map<string, Language>([
     ["typescript", typescript],
     ["typescriptreact", tsx],
@@ -177,6 +181,7 @@ async function loadParsers(): Promise<void> {
     ["javascriptreact", javascript],
     ["json", json],
     ["yaml", yaml],
+    ["python", python],
   ]);
 }
 
@@ -281,6 +286,14 @@ function keyFor(languageId: string, node: SyntaxNode): { key: string; stable: bo
     const local = node.childForFieldName("alias") ?? node.childForFieldName("name");
     if (local) return { key: `import_specifier:${local.text}`, stable: true };
   }
+  const defined = pythonDefinition(node);
+  if (defined) {
+    const definitionName = defined.childForFieldName("name");
+    const text = definitionName?.text ?? "";
+    if (text.length === 0) return { key: defined.type, stable: false };
+    const kind = defined.type === "class_definition" ? "class" : "def";
+    return { key: `${kind}:${text}`, stable: true };
+  }
   const name = node.childForFieldName("name");
   if (name && name.text.length > 0) return { key: `${node.type}:${name.text}`, stable: true };
   if (node.type === "lexical_declaration" || node.type === "variable_declaration") {
@@ -334,6 +347,12 @@ function objectInterior(
 function containerRange(
   node: SyntaxNode,
 ): { parent: SyntaxNode; start: number; end: number } | null {
+  const defined = pythonDefinition(node);
+  if (defined) {
+    const body = defined.childForFieldName("body");
+    if (!body || body.type !== "block" || body.endIndex <= body.startIndex) return null;
+    return { parent: body, start: body.startIndex, end: body.endIndex };
+  }
   if (node.type === "block_mapping" || node.type === "flow_mapping") return mappingInterior(node);
   if (node.type === "document" || node.type === "block_node" || node.type === "flow_node") {
     return mappingInterior(nestedMapping(node));
@@ -505,7 +524,43 @@ function decodeJsonString(token: string): string | null {
   }
 }
 
+function pythonDefinition(node: SyntaxNode): SyntaxNode | null {
+  if (node.type === "function_definition" || node.type === "class_definition") return node;
+  if (node.type !== "decorated_definition") return null;
+  return (
+    node.namedChildren.find(
+      (child) => child.type === "function_definition" || child.type === "class_definition",
+    ) ?? null
+  );
+}
+
+function collectPythonSymbols(root: SyntaxNode): ParseIssue[] {
+  const issues: ParseIssue[] = [];
+  const visit = (node: SyntaxNode, scope: Set<string>): void => {
+    const defined = pythonDefinition(node);
+    if (defined) {
+      const name = defined.childForFieldName("name");
+      const text = name?.text ?? "";
+      if (text.length > 0 && scope.has(text)) {
+        issues.push({
+          line: defined.startPosition.row + 1,
+          message: `Duplicate declaration ${text}`,
+          code: "duplicate",
+        });
+      }
+      if (text.length > 0) scope.add(text);
+      const body = defined.childForFieldName("body");
+      if (body) visit(body, new Set());
+      return;
+    }
+    for (const child of node.namedChildren) visit(child, scope);
+  };
+  visit(root, new Set());
+  return issues;
+}
+
 function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
+  if (languageId === "python") return collectPythonSymbols(root);
   const issues: ParseIssue[] = [];
   const scopes: Array<Map<string, Binding>> = [new Map<string, Binding>()];
 

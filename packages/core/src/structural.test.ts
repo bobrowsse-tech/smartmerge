@@ -322,6 +322,58 @@ describe("structural strategies", () => {
     );
   });
 
+  it("merges Python functions that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "python",
+      "mod.py",
+      "def alpha():\n    return 1\n\ndef beta():\n    return 1\n",
+      "def alpha():\n    return 2\n\ndef beta():\n    return 1\n",
+      "def alpha():\n    return 1\n\ndef beta():\n    return 3\n",
+    );
+    expect(chosen?.recommended).toBe("hunk:1:structural-3way");
+    expect(chosen?.candidates[0]).toMatchObject({
+      result: "def alpha():\n    return 2\n\ndef beta():\n    return 3\n",
+      band: "high",
+      confidence: 0.95,
+      hazardous: false,
+      evidence: [
+        {
+          code: "python-defs",
+          text: "Each side edited different functions or classes. Untouched text is copied from the base.",
+        },
+      ],
+    });
+    expect(chosen?.autoApplyEligible).toBe(false);
+  });
+
+  it("keeps methods added on each side of a Python class", () => {
+    const chosen = proposalForLanguage(
+      "python",
+      "mod.py",
+      "class Box:\n    def left(self):\n        return 1\n",
+      "class Box:\n    def left(self):\n        return 1\n    def right(self):\n        return 2\n",
+      "class Box:\n    def left(self):\n        return 1\n    def top(self):\n        return 3\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "class Box:\n    def left(self):\n        return 1\n    def right(self):\n        return 2\n    def top(self):\n        return 3\n",
+    );
+    expect(chosen?.candidates[0]?.band).toBe("high");
+  });
+
+  it("does not merge a Python function that both sides change", () => {
+    const chosen = proposalForLanguage(
+      "python",
+      "mod.py",
+      "def alpha():\n    return 1\n",
+      "def alpha():\n    return 2\n",
+      "def alpha():\n    return 3\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
   it("does not recommend a merge when both sides edit the same function", () => {
     const chosen = proposalFor(
       "function alpha() {\n  return 1;\n}\n",
@@ -381,6 +433,18 @@ describe("breakage checks", () => {
     expect(quoted.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
     expect(hex.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
     expect(verifyParsed("data.yaml", duplicated, clean, clean).hazardous).toBe(true);
+  });
+
+  it("flags a repeated Python function name", () => {
+    const clean = parseSource("python", "def alpha():\n    return 1\n");
+    const duplicated = parseSource(
+      "python",
+      "def alpha():\n    return 1\n\ndef alpha():\n    return 2\n",
+    );
+    if (!clean || !duplicated) throw new Error("parser unavailable");
+    expect(duplicated.hasErrors).toBe(false);
+    expect(duplicated.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(verifyParsed("mod.py", duplicated, clean, clean).hazardous).toBe(true);
   });
 
   it("allows a repeated key in a JavaScript object literal", () => {
