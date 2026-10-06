@@ -76,6 +76,7 @@ export const STRUCTURAL_LANGUAGES = [
   "java",
   "kotlin",
   "csharp",
+  "rust",
 ] as const;
 
 const SUPPORTED = new Set<string>(STRUCTURAL_LANGUAGES);
@@ -201,6 +202,9 @@ async function loadParsers(): Promise<void> {
   const csharp = await Language.load(
     grammar("tree-sitter-c-sharp/tree-sitter-c_sharp.wasm", "tree-sitter-c_sharp.wasm"),
   );
+  const rust = await Language.load(
+    grammar("tree-sitter-rust/tree-sitter-rust.wasm", "tree-sitter-rust.wasm"),
+  );
   languages = new Map<string, Language>([
     ["typescript", typescript],
     ["typescriptreact", tsx],
@@ -213,6 +217,7 @@ async function loadParsers(): Promise<void> {
     ["java", java],
     ["kotlin", kotlin],
     ["csharp", csharp],
+    ["rust", rust],
   ]);
 }
 
@@ -336,6 +341,11 @@ function keyFor(languageId: string, node: SyntaxNode): { key: string; stable: bo
     if (csharpKey !== null) return { key: csharpKey, stable: true };
     return { key: node.type, stable: false };
   }
+  if (languageId === "rust") {
+    const rustKey = rustDefinitionKey(node);
+    if (rustKey !== null) return { key: rustKey, stable: true };
+    return { key: node.type, stable: false };
+  }
   const defined = pythonDefinition(node);
   if (defined) {
     const definitionName = defined.childForFieldName("name");
@@ -397,6 +407,8 @@ function objectInterior(
 function containerRange(
   node: SyntaxNode,
 ): { parent: SyntaxNode; start: number; end: number } | null {
+  const rustBody = rustItemBody(node);
+  if (rustBody) return rustBody;
   const kotlinBody = kotlinTypeBody(node);
   if (kotlinBody) return kotlinBody;
   const csharpBody = csharpTypeBody(node);
@@ -585,7 +597,8 @@ function statementPositional(languageId: string, stable: boolean): boolean {
     languageId !== "go" &&
     languageId !== "java" &&
     languageId !== "kotlin" &&
-    languageId !== "csharp"
+    languageId !== "csharp" &&
+    languageId !== "rust"
   );
 }
 
@@ -892,12 +905,137 @@ function collectCsharpSymbols(root: SyntaxNode): ParseIssue[] {
   return issues;
 }
 
+const RUST_OPEN_DECLARATION = new Set(["impl_item", "trait_item", "mod_item", "foreign_mod_item"]);
+
+function rustKind(type: string): string | null {
+  switch (type) {
+    case "function_item":
+    case "function_signature_item":
+      return "fn";
+    case "struct_item":
+      return "struct";
+    case "union_item":
+      return "union";
+    case "enum_item":
+      return "enum";
+    case "enum_variant":
+      return "variant";
+    case "trait_item":
+      return "trait";
+    case "mod_item":
+      return "mod";
+    case "const_item":
+      return "const";
+    case "static_item":
+      return "static";
+    case "type_item":
+      return "type";
+    case "associated_type":
+      return "assoc";
+    case "macro_definition":
+      return "macro";
+    default:
+      return null;
+  }
+}
+
+/** Type label for an impl, including the trait when this impl is for a trait. */
+function rustImplLabel(node: SyntaxNode): string {
+  const typeName = node.childForFieldName("type")?.text ?? "";
+  if (typeName.length === 0) return "";
+  const traitName = node.childForFieldName("trait")?.text ?? "";
+  return traitName.length > 0 ? `${traitName}.for.${typeName}` : typeName;
+}
+
+/** Enclosing module, trait, impl, enum, and extern names, outer first. */
+function rustEnclosingName(node: SyntaxNode): string {
+  const parts: string[] = [];
+  let current: SyntaxNode | null = node.parent;
+  while (current) {
+    if (
+      current.type === "mod_item" ||
+      current.type === "trait_item" ||
+      current.type === "enum_item"
+    ) {
+      const name = current.childForFieldName("name")?.text ?? "";
+      if (name.length > 0) parts.unshift(name);
+    } else if (current.type === "impl_item") {
+      const label = rustImplLabel(current);
+      if (label.length > 0) parts.unshift(label);
+    } else if (current.type === "foreign_mod_item") {
+      parts.unshift("extern");
+    }
+    current = current.parent;
+  }
+  return parts.join(".");
+}
+
+function rustQualified(node: SyntaxNode, name: string): string {
+  const owner = rustEnclosingName(node);
+  return owner.length > 0 ? `${owner}.${name}` : name;
+}
+
+function rustItemBody(node: SyntaxNode): { parent: SyntaxNode; start: number; end: number } | null {
+  const opened = RUST_OPEN_DECLARATION.has(node.type)
+    ? "declaration_list"
+    : node.type === "enum_item"
+      ? "enum_variant_list"
+      : null;
+  if (opened === null) return null;
+  const body = node.childForFieldName("body");
+  if (!body || body.type !== opened || body.endIndex - body.startIndex < 2) return null;
+  return { parent: body, start: body.startIndex + 1, end: body.endIndex - 1 };
+}
+
+/** Stable key for a Rust item. Fields, lets, and statements stay unnamed. */
+function rustDefinitionKey(node: SyntaxNode): string | null {
+  if (node.type === "impl_item") {
+    const own = rustImplLabel(node);
+    if (own.length === 0) return null;
+    return `impl:${rustQualified(node, own)}`;
+  }
+  if (node.type === "foreign_mod_item") {
+    const owner = rustEnclosingName(node);
+    return owner.length > 0 ? `mod:${owner}.extern` : "mod:extern";
+  }
+  const kind = rustKind(node.type);
+  if (kind === null) return null;
+  const name = node.childForFieldName("name")?.text ?? "";
+  if (name.length === 0) return null;
+  return `${kind}:${rustQualified(node, name)}`;
+}
+
+function collectRustSymbols(root: SyntaxNode): ParseIssue[] {
+  const issues: ParseIssue[] = [];
+  const seen = new Set<string>();
+  const visit = (node: SyntaxNode): void => {
+    const key = rustDefinitionKey(node);
+    if (key !== null) {
+      const repeated = node.type !== "impl_item" && node.type !== "foreign_mod_item";
+      if (repeated && seen.has(key)) {
+        const label = key.slice(key.indexOf(":") + 1);
+        issues.push({
+          line: node.startPosition.row + 1,
+          message: `Duplicate declaration ${label}`,
+          code: "duplicate",
+        });
+      }
+      if (repeated) seen.add(key);
+      if (node.type === "function_item" || node.type === "function_signature_item") return;
+    }
+    for (const child of node.namedChildren) visit(child);
+  };
+  visit(root);
+  return issues;
+}
+
 function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "python") return collectPythonSymbols(root);
   if (languageId === "go") return collectGoSymbols(root);
   if (languageId === "java") return collectJavaSymbols(root);
   if (languageId === "kotlin") return collectKotlinSymbols(root);
   if (languageId === "csharp") return collectCsharpSymbols(root);
+  if (languageId === "rust") return collectRustSymbols(root);
   const issues: ParseIssue[] = [];
   const scopes: Array<Map<string, Binding>> = [new Map<string, Binding>()];
 
