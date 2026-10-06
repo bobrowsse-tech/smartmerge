@@ -1,6 +1,7 @@
 {
   "name": "@smartmerge/daemon",
   "version": "0.0.0",
+  "private": true,
   "description": "JSON-RPC daemon for conflict listing, structural proposals, and undoable apply.",
   "license": "MPL-2.0",
   "type": "module",

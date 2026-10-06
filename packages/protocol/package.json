@@ -1,6 +1,7 @@
 {
   "name": "@smartmerge/protocol",
   "version": "0.0.0",
+  "private": true,
   "description": "Shared types and JSON-RPC contract for SmartMergeResolver (source of truth: docs/06-protocol.types.ts).",
   "license": "Apache-2.0",
   "type": "module",

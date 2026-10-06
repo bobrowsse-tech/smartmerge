@@ -33,17 +33,11 @@
     "action.yml"
   ],
   "scripts": {
-    "build": "tsc -b",
+    "build": "tsc -b && tsx src/bundle.ts",
     "test": "vitest run --config ../../vitest.config.ts",
     "prepublishOnly": "tsx ../../tools/assert-git-publish.ts"
   },
   "devDependencies": {
-    "@types/node": "^24.19.0",
-    "@types/react": "19.3.0",
-    "@types/react-dom": "19.3.0",
-    "ink-testing-library": "4.0.0"
-  },
-  "dependencies": {
     "@smartmerge/agent-kit": "workspace:*",
     "@smartmerge/core": "workspace:*",
     "@smartmerge/daemon": "workspace:*",
@@ -51,8 +45,17 @@
     "@smartmerge/mcp": "workspace:*",
     "@smartmerge/protocol": "workspace:*",
     "@smartmerge/ui": "workspace:*",
+    "@types/node": "^24.19.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "esbuild": "^0.28.2",
+    "ink-testing-library": "4.0.0"
+  },
+  "dependencies": {
+    "eslint": "^10.11.0",
     "ink": "7.1.1",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "typescript": "^6.0.3"
   }
 }
