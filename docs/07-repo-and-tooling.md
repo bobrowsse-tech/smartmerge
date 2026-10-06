@@ -79,7 +79,7 @@ smartmerge/
 - Matrix: linux/macos/windows × Node LTS.
 - Jobs: typecheck, lint, unit, corpus-benchmark (nightly plus on `core` changes), UI Storybook visual tests, adapter integration tests, codegen drift check.
 - Gates: corpus precision/ECE thresholds from 08; bundle size budget for daemon (under 25 MB including WASM grammars, lazily loaded).
-- **Public-content guard** (`tools/check-public-content.ts`): fails the build if any published surface (docs site, README, package READMEs, store listing text, UI strings, release notes) contains a name on `private/forbidden-names.json` (or the file named by `SMARTMERGE_FORBIDDEN_NAMES_FILE`; never committed) (competitor products and brands, maintained privately by the Go-to-Market Agent), or if `private/` would be included in a public docs build or package tarball. Also runs on PR titles and commit messages.
+- **Public-content guard** (`tools/check-public-content.ts`): fails the build if any published surface (docs site, README, package READMEs, store listing text, UI strings, release notes) contains a name on `private/forbidden-names.json` (or the file named by `SMARTMERGE_FORBIDDEN_NAMES_FILE`; never committed) (competitor products and brands, maintained privately by the Go-to-Market Agent), or if `private/` would be included in a public docs build or package tarball. Also runs on PR titles and commit messages. The dependency-update workflow cannot read Actions secrets, so it reads a secret of the same name from its own secret store.
 
 ## Release
 

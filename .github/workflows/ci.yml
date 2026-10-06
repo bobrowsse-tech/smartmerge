@@ -74,6 +74,7 @@ jobs:
 
       - name: Public content guard
         env:
+          # Dependency-update workflows cannot read Actions secrets. They read a secret of the same name from their own store.
           FORBIDDEN_NAMES_JSON: ${{ secrets.SMARTMERGE_FORBIDDEN_NAMES }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
