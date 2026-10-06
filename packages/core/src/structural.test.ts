@@ -1242,6 +1242,173 @@ describe("structural strategies", () => {
     );
   });
 
+  it("merges PHP functions that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "php",
+      "file.php",
+      "<?php\nfunction alpha() { return 1; }\nfunction beta() { return 1; }\n",
+      "<?php\nfunction alpha() { return 2; }\nfunction beta() { return 1; }\n",
+      "<?php\nfunction alpha() { return 1; }\nfunction beta() { return 3; }\n",
+    );
+    expect(chosen?.recommended).toBe("hunk:1:structural-3way");
+    expect(chosen?.candidates[0]).toMatchObject({
+      result: "<?php\nfunction alpha() { return 2; }\nfunction beta() { return 3; }\n",
+      band: "high",
+      confidence: 0.95,
+      hazardous: false,
+      evidence: [
+        {
+          code: "php-defs",
+          text: "Each side edited different functions or types. Untouched text is copied from the base.",
+        },
+      ],
+    });
+    expect(chosen?.autoApplyEligible).toBe(false);
+  });
+
+  it("merges PHP methods and keeps each method's visibility", () => {
+    const base =
+      "<?php\nclass Box {\n  public function left() { return 1; }\n  public function right() { return 1; }\n}\n";
+    const chosen = proposalForLanguage(
+      "php",
+      "file.php",
+      base,
+      "<?php\nclass Box {\n  public function left() { return 2; }\n  public function right() { return 1; }\n}\n",
+      "<?php\nclass Box {\n  public function left() { return 1; }\n  public function right() { return 3; }\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "<?php\nclass Box {\n  public function left() { return 2; }\n  public function right() { return 3; }\n}\n",
+    );
+  });
+
+  it("merges a PHP constructor and a method", () => {
+    const base =
+      "<?php\nclass Box {\n  public function __construct() { $this->value = 1; }\n  public function left() { return 1; }\n}\n";
+    const chosen = proposalForLanguage(
+      "php",
+      "file.php",
+      base,
+      "<?php\nclass Box {\n  public function __construct() { $this->value = 2; }\n  public function left() { return 1; }\n}\n",
+      "<?php\nclass Box {\n  public function __construct() { $this->value = 1; }\n  public function left() { return 3; }\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "<?php\nclass Box {\n  public function __construct() { $this->value = 2; }\n  public function left() { return 3; }\n}\n",
+    );
+  });
+
+  it("keeps the same PHP method name distinct on two classes", () => {
+    const base =
+      "<?php\nclass Box {\n  public function left() { return 1; }\n}\nclass Bag {\n  public function left() { return 1; }\n}\n";
+    const chosen = proposalForLanguage(
+      "php",
+      "file.php",
+      base,
+      "<?php\nclass Box {\n  public function left() { return 2; }\n}\nclass Bag {\n  public function left() { return 1; }\n}\n",
+      "<?php\nclass Box {\n  public function left() { return 1; }\n}\nclass Bag {\n  public function left() { return 3; }\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "<?php\nclass Box {\n  public function left() { return 2; }\n}\nclass Bag {\n  public function left() { return 3; }\n}\n",
+    );
+  });
+
+  it("merges PHP functions inside one namespace", () => {
+    const base =
+      "<?php\nnamespace App {\nfunction alpha() { return 1; }\nfunction beta() { return 1; }\n}\n";
+    const chosen = proposalForLanguage(
+      "php",
+      "file.php",
+      base,
+      "<?php\nnamespace App {\nfunction alpha() { return 2; }\nfunction beta() { return 1; }\n}\n",
+      "<?php\nnamespace App {\nfunction alpha() { return 1; }\nfunction beta() { return 3; }\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "<?php\nnamespace App {\nfunction alpha() { return 2; }\nfunction beta() { return 3; }\n}\n",
+    );
+  });
+
+  it("merges PHP enum cases that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "php",
+      "file.php",
+      "<?php\nenum Hue {\n  case Red = 1;\n  case Blue = 1;\n}\n",
+      "<?php\nenum Hue {\n  case Red = 2;\n  case Blue = 1;\n}\n",
+      "<?php\nenum Hue {\n  case Red = 1;\n  case Blue = 3;\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "<?php\nenum Hue {\n  case Red = 2;\n  case Blue = 3;\n}\n",
+    );
+  });
+
+  it("merges PHP constants that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "php",
+      "file.php",
+      "<?php\nconst MAX = 1;\nconst MIN = 2;\n",
+      "<?php\nconst MAX = 3;\nconst MIN = 2;\n",
+      "<?php\nconst MAX = 1;\nconst MIN = 4;\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe("<?php\nconst MAX = 3;\nconst MIN = 4;\n");
+  });
+
+  it("does not merge PHP properties by position", () => {
+    const chosen = proposalForLanguage(
+      "php",
+      "file.php",
+      "<?php\nclass Box { public int $x; public int $y; }\n",
+      "<?php\nclass Box { public int $a; public int $y; }\n",
+      "<?php\nclass Box { public int $x; public int $b; }\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge PHP statements by position", () => {
+    const chosen = proposalForLanguage(
+      "php",
+      "file.php",
+      "<?php\nfunction alpha() {\n  $x = 1;\n  $y = 1;\n  return $x;\n}\n",
+      "<?php\nfunction alpha() {\n  $x = 2;\n  $y = 1;\n  return $x;\n}\n",
+      "<?php\nfunction alpha() {\n  $x = 1;\n  $y = 3;\n  return $x;\n}\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge PHP use declarations by position", () => {
+    const chosen = proposalForLanguage(
+      "php",
+      "file.php",
+      "<?php\nuse Foo\\Left;\nuse Foo\\Right;\n",
+      "<?php\nuse Foo\\Alpha;\nuse Foo\\Beta;\n",
+      "<?php\nuse Other\\Left;\nuse Foo\\Extra;\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "rename-aware")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge a PHP function that both sides change", () => {
+    const chosen = proposalForLanguage(
+      "php",
+      "file.php",
+      "<?php\nfunction alpha() { return 1; }\n",
+      "<?php\nfunction alpha() { return 2; }\n",
+      "<?php\nfunction alpha() { return 3; }\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
   it("does not merge a Python function that both sides change", () => {
     const chosen = proposalForLanguage(
       "python",
@@ -1279,6 +1446,7 @@ describe("structural languages", () => {
     expect(STRUCTURAL_LANGUAGES).toContain("rust");
     expect(STRUCTURAL_LANGUAGES).toContain("c");
     expect(STRUCTURAL_LANGUAGES).toContain("cpp");
+    expect(STRUCTURAL_LANGUAGES).toContain("php");
     for (const languageId of STRUCTURAL_LANGUAGES) {
       expect(isStructuralLanguage(languageId)).toBe(true);
     }
@@ -1422,6 +1590,25 @@ describe("breakage checks", () => {
     expect(overloads.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
     expect(called.symbolIssues.some((issue) => issue.code === "undeclared")).toBe(false);
     expect(verifyParsed("file.cpp", duplicated, clean, clean).hazardous).toBe(true);
+  });
+
+  it("flags a repeated PHP function and ignores an undeclared call", () => {
+    const clean = parseSource("php", "<?php\nfunction alpha() { return 1; }\n");
+    const duplicated = parseSource(
+      "php",
+      "<?php\nfunction alpha() { return 1; }\nfunction alpha() { return 2; }\n",
+    );
+    const differentType = parseSource(
+      "php",
+      "<?php\nclass Box {\n  public function left() { return 1; }\n}\nclass Bag {\n  public function left() { return 2; }\n}\n",
+    );
+    const called = parseSource("php", "<?php\nfunction alpha() { return missing(); }\n");
+    if (!clean || !duplicated || !differentType || !called) throw new Error("parser unavailable");
+    expect(duplicated.hasErrors).toBe(false);
+    expect(duplicated.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(differentType.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
+    expect(called.symbolIssues.some((issue) => issue.code === "undeclared")).toBe(false);
+    expect(verifyParsed("file.php", duplicated, clean, clean).hazardous).toBe(true);
   });
 
   it("flags a repeated Kotlin function and ignores an undeclared call", () => {

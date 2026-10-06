@@ -36,7 +36,7 @@ export interface ConcreteNode {
   type: string;
   /**
    * When false, an unstable node is not aligned by position.
-   * Python, Go, Java, Kotlin, C#, Rust, C, and C++ statements use this so two assignments are not merged just because they line up.
+   * Python, Go, Java, Kotlin, C#, Rust, C, C++, and PHP statements use this so two assignments are not merged just because they line up.
    */
   positional: boolean;
   body: string;
@@ -79,6 +79,7 @@ export const STRUCTURAL_LANGUAGES = [
   "rust",
   "c",
   "cpp",
+  "php",
 ] as const;
 
 const SUPPORTED = new Set<string>(STRUCTURAL_LANGUAGES);
@@ -211,6 +212,9 @@ async function loadParsers(): Promise<void> {
   const cpp = await Language.load(
     grammar("tree-sitter-cpp/tree-sitter-cpp.wasm", "tree-sitter-cpp.wasm"),
   );
+  const php = await Language.load(
+    grammar("tree-sitter-php/tree-sitter-php_only.wasm", "tree-sitter-php_only.wasm"),
+  );
   languages = new Map<string, Language>([
     ["typescript", typescript],
     ["typescriptreact", tsx],
@@ -226,6 +230,7 @@ async function loadParsers(): Promise<void> {
     ["rust", rust],
     ["c", c],
     ["cpp", cpp],
+    ["php", php],
   ]);
 }
 
@@ -364,6 +369,11 @@ function keyFor(languageId: string, node: SyntaxNode): { key: string; stable: bo
     if (cppKey !== null) return { key: cppKey, stable: true };
     return { key: node.type, stable: false };
   }
+  if (languageId === "php") {
+    const phpKey = phpDefinitionKey(node);
+    if (phpKey !== null) return { key: phpKey, stable: true };
+    return { key: node.type, stable: false };
+  }
   const defined = pythonDefinition(node);
   if (defined) {
     const definitionName = defined.childForFieldName("name");
@@ -429,6 +439,10 @@ function containerRange(
   if (languageId === "cpp") {
     const cppBody = cppItemBody(node);
     if (cppBody) return cppBody;
+  }
+  if (languageId === "php") {
+    const phpBody = phpItemBody(node);
+    if (phpBody) return phpBody;
   }
   const cBody = cItemBody(node);
   if (cBody) return cBody;
@@ -625,7 +639,8 @@ function statementPositional(languageId: string, stable: boolean): boolean {
     languageId !== "csharp" &&
     languageId !== "rust" &&
     languageId !== "c" &&
-    languageId !== "cpp"
+    languageId !== "cpp" &&
+    languageId !== "php"
   );
 }
 
@@ -1427,6 +1442,174 @@ function collectCppSymbols(root: SyntaxNode): ParseIssue[] {
   return issues;
 }
 
+function phpDotted(text: string): string {
+  return text.replaceAll("\\", ".");
+}
+
+function phpNamespaceText(node: SyntaxNode): string {
+  const name = node.childForFieldName("name");
+  return name ? phpDotted(name.text) : "";
+}
+
+function phpSimpleName(node: SyntaxNode): string {
+  const named = node.childForFieldName("name");
+  if (named && named.text.length > 0 && named.type === "name") return named.text;
+  const child = node.namedChildren.find((item) => item.type === "name");
+  return child?.text ?? "";
+}
+
+function phpTypeKind(type: string): "class" | "interface" | "trait" | "enum" | null {
+  if (type === "class_declaration") return "class";
+  if (type === "interface_declaration") return "interface";
+  if (type === "trait_declaration") return "trait";
+  if (type === "enum_declaration") return "enum";
+  return null;
+}
+
+/** Nearest previous `namespace Name;` that does not wrap its body. */
+function phpStatementNamespace(node: SyntaxNode): string {
+  let current: SyntaxNode | null = node.parent;
+  while (current) {
+    if (current.type === "namespace_definition" && current.childForFieldName("body") !== null) {
+      return "";
+    }
+    current = current.parent;
+  }
+  let found = "";
+  let cursor: SyntaxNode | null = node;
+  while (cursor) {
+    const parent: SyntaxNode | null = cursor.parent;
+    if (!parent) break;
+    for (const sibling of parent.namedChildren) {
+      if (sibling.startIndex >= cursor.startIndex) break;
+      if (sibling.type !== "namespace_definition" || sibling.childForFieldName("body") !== null) {
+        continue;
+      }
+      const name = phpNamespaceText(sibling);
+      if (name.length > 0) found = name;
+    }
+    if (parent.type === "program") break;
+    cursor = parent;
+  }
+  return found;
+}
+
+function phpQualified(node: SyntaxNode, name: string): string {
+  const parts: string[] = [];
+  const statement = phpStatementNamespace(node);
+  if (statement.length > 0) parts.push(statement);
+  const owners: string[] = [];
+  let current: SyntaxNode | null = node.parent;
+  while (current) {
+    if (current.type === "namespace_definition") {
+      const text = phpNamespaceText(current);
+      if (text.length > 0) owners.unshift(text);
+    } else if (phpTypeKind(current.type) !== null) {
+      const text = phpSimpleName(current);
+      if (text.length > 0) owners.unshift(text);
+    }
+    current = current.parent;
+  }
+  parts.push(...owners, name);
+  return parts.join(".");
+}
+
+function phpConstName(node: SyntaxNode): string | null {
+  const elements = node.namedChildren.filter((child) => child.type === "const_element");
+  if (elements.length !== 1) return null;
+  const element = elements[0];
+  if (!element) return null;
+  const name = element.namedChildren.find((child) => child.type === "name")?.text ?? "";
+  return name.length > 0 ? name : null;
+}
+
+function phpOpenedBody(
+  node: SyntaxNode,
+  bodyType: string,
+): { parent: SyntaxNode; start: number; end: number } | null {
+  const body = node.childForFieldName("body");
+  if (!body || body.type !== bodyType || body.endIndex - body.startIndex < 2) return null;
+  return { parent: body, start: body.startIndex + 1, end: body.endIndex - 1 };
+}
+
+function phpItemBody(node: SyntaxNode): { parent: SyntaxNode; start: number; end: number } | null {
+  if (phpTypeKind(node.type) !== null) {
+    if (phpSimpleName(node).length === 0) return null;
+    const bodyType =
+      node.type === "enum_declaration" ? "enum_declaration_list" : "declaration_list";
+    return phpOpenedBody(node, bodyType);
+  }
+  if (node.type === "namespace_definition") {
+    if (phpNamespaceText(node).length === 0) return null;
+    return phpOpenedBody(node, "compound_statement");
+  }
+  return null;
+}
+
+/** Stable key for a PHP function, type, case, or constant. Properties and statements stay unnamed. */
+function phpDefinitionKey(node: SyntaxNode): string | null {
+  if (node.type === "function_definition") {
+    const name = phpSimpleName(node);
+    return name.length > 0 ? `fn:${phpQualified(node, name)}` : null;
+  }
+  if (node.type === "method_declaration") {
+    const name = phpSimpleName(node);
+    return name.length > 0 ? `method:${phpQualified(node, name)}` : null;
+  }
+  const typeKind = phpTypeKind(node.type);
+  if (typeKind !== null) {
+    const name = phpSimpleName(node);
+    return name.length > 0 ? `${typeKind}:${phpQualified(node, name)}` : null;
+  }
+  if (node.type === "namespace_definition") {
+    const name = phpNamespaceText(node);
+    if (name.length === 0) return null;
+    const owners: string[] = [];
+    let current: SyntaxNode | null = node.parent;
+    while (current) {
+      if (current.type === "namespace_definition") {
+        const text = phpNamespaceText(current);
+        if (text.length > 0) owners.unshift(text);
+      }
+      current = current.parent;
+    }
+    return `namespace:${[...owners, name].join(".")}`;
+  }
+  if (node.type === "enum_case") {
+    const name = phpSimpleName(node);
+    return name.length > 0 ? `case:${phpQualified(node, name)}` : null;
+  }
+  if (node.type === "const_declaration") {
+    const name = phpConstName(node);
+    return name === null ? null : `const:${phpQualified(node, name)}`;
+  }
+  return null;
+}
+
+function collectPhpSymbols(root: SyntaxNode): ParseIssue[] {
+  const issues: ParseIssue[] = [];
+  const seen = new Set<string>();
+  const visit = (node: SyntaxNode): void => {
+    const key = phpDefinitionKey(node);
+    if (key !== null) {
+      const repeated = key.startsWith("fn:") || key.startsWith("method:");
+      if (repeated && seen.has(key)) {
+        const label = key.slice(key.indexOf(":") + 1);
+        issues.push({
+          line: node.startPosition.row + 1,
+          message: `Duplicate declaration ${label}`,
+          code: "duplicate",
+        });
+      }
+      if (repeated) seen.add(key);
+      if (node.type === "function_definition" || node.type === "method_declaration") return;
+    }
+    for (const child of node.namedChildren) visit(child);
+  };
+  visit(root);
+  return issues;
+}
+
 function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "python") return collectPythonSymbols(root);
   if (languageId === "go") return collectGoSymbols(root);
@@ -1436,6 +1619,7 @@ function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "rust") return collectRustSymbols(root);
   if (languageId === "c") return collectCSymbols(root);
   if (languageId === "cpp") return collectCppSymbols(root);
+  if (languageId === "php") return collectPhpSymbols(root);
   const issues: ParseIssue[] = [];
   const scopes: Array<Map<string, Binding>> = [new Map<string, Binding>()];
 
