@@ -241,6 +241,28 @@ describe("replayConflicts", () => {
     });
   });
 
+  it("keeps a Java whole-file merge in the high band", async () => {
+    const report = await replayConflicts([
+      {
+        repository: "sample",
+        path: "Box.java",
+        conflicted:
+          "prefix\n<<<<<<< current\n    return (\n=======\n    return [\n>>>>>>> incoming\nsuffix\n",
+        base: "class Box {\n  int left() { return 1; }\n  int right() { return 1; }\n}\n",
+        current: "class Box {\n  int left() { return 2; }\n  int right() { return 1; }\n}\n",
+        incoming: "class Box {\n  int left() { return 1; }\n  int right() { return 3; }\n}\n",
+        humanResult: "class Box {\n  int left() { return 2; }\n  int right() { return 3; }\n}\n",
+      },
+    ]);
+    expect(report.predicted).toBe(1);
+    expect(report.rows[0]).toEqual({
+      repository: "sample",
+      confidence: 0.95,
+      correct: true,
+      confidenceSource: "fixed-proposal",
+    });
+  });
+
   it("leaves a fragment unresolved when the parent files were not stored", async () => {
     const conflicted =
       "prefix\n<<<<<<< current\n    return value + 10;\n  }\n=======\n    return value + 20;\n  }\n>>>>>>> incoming\nsuffix\n";

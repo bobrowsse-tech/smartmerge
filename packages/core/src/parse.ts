@@ -36,7 +36,7 @@ export interface ConcreteNode {
   type: string;
   /**
    * When false, an unstable node is not aligned by position.
-   * Python statements use this so two assignments are not merged just because they line up.
+   * Python, Go, and Java statements use this so two assignments are not merged just because they line up.
    */
   positional: boolean;
   body: string;
@@ -73,6 +73,7 @@ export const STRUCTURAL_LANGUAGES = [
   "yaml",
   "python",
   "go",
+  "java",
 ] as const;
 
 const SUPPORTED = new Set<string>(STRUCTURAL_LANGUAGES);
@@ -186,6 +187,9 @@ async function loadParsers(): Promise<void> {
   const go = await Language.load(
     grammar("tree-sitter-go/tree-sitter-go.wasm", "tree-sitter-go.wasm"),
   );
+  const java = await Language.load(
+    grammar("tree-sitter-java/tree-sitter-java.wasm", "tree-sitter-java.wasm"),
+  );
   languages = new Map<string, Language>([
     ["typescript", typescript],
     ["typescriptreact", tsx],
@@ -195,6 +199,7 @@ async function loadParsers(): Promise<void> {
     ["yaml", yaml],
     ["python", python],
     ["go", go],
+    ["java", java],
   ]);
 }
 
@@ -303,6 +308,11 @@ function keyFor(languageId: string, node: SyntaxNode): { key: string; stable: bo
   }
   const goKey = goDefinitionKey(node);
   if (goKey !== null) return { key: goKey, stable: true };
+  if (languageId === "java") {
+    const javaKey = javaDefinitionKey(node);
+    if (javaKey !== null) return { key: javaKey, stable: true };
+    return { key: node.type, stable: false };
+  }
   const defined = pythonDefinition(node);
   if (defined) {
     const definitionName = defined.childForFieldName("name");
@@ -543,7 +553,7 @@ function decodeJsonString(token: string): string | null {
 
 function statementPositional(languageId: string, stable: boolean): boolean {
   if (stable) return true;
-  return languageId !== "python" && languageId !== "go";
+  return languageId !== "python" && languageId !== "go" && languageId !== "java";
 }
 
 function goReceiverType(receiver: SyntaxNode): string {
@@ -569,6 +579,48 @@ function goDefinitionKey(node: SyntaxNode): string | null {
   const typeName = receiver ? goReceiverType(receiver) : "";
   if (name.length === 0 || typeName.length === 0) return null;
   return `method:${typeName}.${name}`;
+}
+
+const JAVA_TYPE_DECLARATIONS = new Set([
+  "class_declaration",
+  "interface_declaration",
+  "enum_declaration",
+]);
+
+function javaTypeKind(type: string): string {
+  if (type === "interface_declaration") return "interface";
+  if (type === "enum_declaration") return "enum";
+  return "class";
+}
+
+/** Enclosing class, interface, and enum names, outer first. */
+function javaEnclosingType(node: SyntaxNode): string {
+  const parts: string[] = [];
+  let current: SyntaxNode | null = node.parent;
+  while (current) {
+    if (JAVA_TYPE_DECLARATIONS.has(current.type)) {
+      const name = current.childForFieldName("name")?.text ?? "";
+      if (name.length > 0) parts.unshift(name);
+    }
+    current = current.parent;
+  }
+  return parts.join(".");
+}
+
+/** Stable key for a Java type, method, or constructor. Nested types keep their parent. */
+function javaDefinitionKey(node: SyntaxNode): string | null {
+  const name = node.childForFieldName("name")?.text ?? "";
+  if (name.length === 0) return null;
+  if (JAVA_TYPE_DECLARATIONS.has(node.type)) {
+    const parent = javaEnclosingType(node);
+    const label = parent.length > 0 ? `${parent}.${name}` : name;
+    return `${javaTypeKind(node.type)}:${label}`;
+  }
+  if (node.type !== "method_declaration" && node.type !== "constructor_declaration") return null;
+  const owner = javaEnclosingType(node);
+  if (owner.length === 0) return null;
+  const kind = node.type === "constructor_declaration" ? "constructor" : "method";
+  return `${kind}:${owner}.${name}`;
 }
 
 function pythonDefinition(node: SyntaxNode): SyntaxNode | null {
@@ -629,9 +681,33 @@ function collectGoSymbols(root: SyntaxNode): ParseIssue[] {
   return issues;
 }
 
+function collectJavaSymbols(root: SyntaxNode): ParseIssue[] {
+  const issues: ParseIssue[] = [];
+  const seen = new Set<string>();
+  const visit = (node: SyntaxNode): void => {
+    const key = javaDefinitionKey(node);
+    if (key !== null) {
+      if (seen.has(key)) {
+        const label = key.slice(key.indexOf(":") + 1);
+        issues.push({
+          line: node.startPosition.row + 1,
+          message: `Duplicate declaration ${label}`,
+          code: "duplicate",
+        });
+      }
+      seen.add(key);
+      if (node.type === "method_declaration" || node.type === "constructor_declaration") return;
+    }
+    for (const child of node.namedChildren) visit(child);
+  };
+  visit(root);
+  return issues;
+}
+
 function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "python") return collectPythonSymbols(root);
   if (languageId === "go") return collectGoSymbols(root);
+  if (languageId === "java") return collectJavaSymbols(root);
   const issues: ParseIssue[] = [];
   const scopes: Array<Map<string, Binding>> = [new Map<string, Binding>()];
 

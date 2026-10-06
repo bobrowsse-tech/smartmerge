@@ -467,6 +467,98 @@ describe("structural strategies", () => {
     );
   });
 
+  it("merges Java methods that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "java",
+      "Box.java",
+      "class Box {\n  int left() { return 1; }\n  int right() { return 1; }\n}\n",
+      "class Box {\n  int left() { return 2; }\n  int right() { return 1; }\n}\n",
+      "class Box {\n  int left() { return 1; }\n  int right() { return 3; }\n}\n",
+    );
+    expect(chosen?.recommended).toBe("hunk:1:structural-3way");
+    expect(chosen?.candidates[0]).toMatchObject({
+      result: "class Box {\n  int left() { return 2; }\n  int right() { return 3; }\n}\n",
+      band: "high",
+      confidence: 0.95,
+      hazardous: false,
+      evidence: [
+        {
+          code: "java-types",
+          text: "Each side edited different types or methods. Untouched text is copied from the base.",
+        },
+      ],
+    });
+    expect(chosen?.autoApplyEligible).toBe(false);
+  });
+
+  it("keeps a Java constructor and a method edited on the other side", () => {
+    const chosen = proposalForLanguage(
+      "java",
+      "Box.java",
+      "class Box {\n  int left() { return 1; }\n}\n",
+      "class Box {\n  Box() { }\n  int left() { return 1; }\n}\n",
+      "class Box {\n  int left() { return 2; }\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "class Box {\n  Box() { }\n  int left() { return 2; }\n}\n",
+    );
+    expect(chosen?.candidates[0]?.band).toBe("high");
+  });
+
+  it("merges a Java class, interface, and enum when each side edits a different member", () => {
+    const chosen = proposalForLanguage(
+      "java",
+      "Types.java",
+      "class Box {\n  int left() { return 1; }\n}\ninterface Bag {\n  int size();\n}\nenum Hue { RED }\n",
+      "class Box {\n  int left() { return 2; }\n}\ninterface Bag {\n  int size();\n}\nenum Hue { RED }\n",
+      "class Box {\n  int left() { return 1; }\n}\ninterface Bag {\n  int size();\n  int other();\n}\nenum Hue { RED }\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "class Box {\n  int left() { return 2; }\n}\ninterface Bag {\n  int size();\n  int other();\n}\nenum Hue { RED }\n",
+    );
+  });
+
+  it("keeps methods with the same name on different Java types", () => {
+    const chosen = proposalForLanguage(
+      "java",
+      "Types.java",
+      "class Box {\n  int left() { return 1; }\n}\nclass Bag {\n  int left() { return 1; }\n}\n",
+      "class Box {\n  int left() { return 2; }\n}\nclass Bag {\n  int left() { return 1; }\n}\n",
+      "class Box {\n  int left() { return 1; }\n}\nclass Bag {\n  int left() { return 3; }\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "class Box {\n  int left() { return 2; }\n}\nclass Bag {\n  int left() { return 3; }\n}\n",
+    );
+  });
+
+  it("does not merge Java fields by position", () => {
+    const chosen = proposalForLanguage(
+      "java",
+      "Box.java",
+      "class Box {\n  int x = 1;\n  int y = 1;\n}\n",
+      "class Box {\n  int x = 2;\n  int y = 1;\n}\n",
+      "class Box {\n  int x = 1;\n  int y = 3;\n}\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge a Java method that both sides change", () => {
+    const chosen = proposalForLanguage(
+      "java",
+      "Box.java",
+      "class Box {\n  int left() { return 1; }\n}\n",
+      "class Box {\n  int left() { return 2; }\n}\n",
+      "class Box {\n  int left() { return 3; }\n}\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
   it("does not merge a Python function that both sides change", () => {
     const chosen = proposalForLanguage(
       "python",
@@ -498,6 +590,7 @@ describe("structural languages", () => {
     expect(STRUCTURAL_LANGUAGES).toContain("json");
     expect(STRUCTURAL_LANGUAGES).toContain("yaml");
     expect(STRUCTURAL_LANGUAGES).toContain("go");
+    expect(STRUCTURAL_LANGUAGES).toContain("java");
     for (const languageId of STRUCTURAL_LANGUAGES) {
       expect(isStructuralLanguage(languageId)).toBe(true);
     }
@@ -552,6 +645,25 @@ describe("breakage checks", () => {
     expect(quoted.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
     expect(hex.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
     expect(verifyParsed("data.yaml", duplicated, clean, clean).hazardous).toBe(true);
+  });
+
+  it("flags a repeated Java method and ignores an undeclared call", () => {
+    const clean = parseSource("java", "class Box {\n  int left() { return 1; }\n}\n");
+    const duplicated = parseSource(
+      "java",
+      "class Box {\n  int left() { return 1; }\n  int left() { return 2; }\n}\n",
+    );
+    const differentType = parseSource(
+      "java",
+      "class Box {\n  int left() { return 1; }\n}\nclass Bag {\n  int left() { return 2; }\n}\n",
+    );
+    const called = parseSource("java", "class Box {\n  int left() { return missing(); }\n}\n");
+    if (!clean || !duplicated || !differentType || !called) throw new Error("parser unavailable");
+    expect(duplicated.hasErrors).toBe(false);
+    expect(duplicated.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(differentType.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
+    expect(called.symbolIssues.some((issue) => issue.code === "undeclared")).toBe(false);
+    expect(verifyParsed("Box.java", duplicated, clean, clean).hazardous).toBe(true);
   });
 
   it("flags a repeated Go function or method name", () => {

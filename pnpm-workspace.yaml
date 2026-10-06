@@ -16,3 +16,4 @@ allowBuilds:
   "@tree-sitter-grammars/tree-sitter-yaml": false
   tree-sitter-python: false
   tree-sitter-go: false
+  tree-sitter-java: false
