@@ -270,7 +270,8 @@ function keyFor(languageId: string, node: SyntaxNode): { key: string; stable: bo
   if (node.type === "block_mapping_pair" || node.type === "flow_pair") {
     const key = node.childForFieldName("key");
     const text = key ? yamlKeyText(key) : "";
-    return { key: `yaml:${text}`, stable: text.length > 0 };
+    if (text === null || text.length === 0) return { key: "yaml:unparsed", stable: false };
+    return { key: `yaml:${text}`, stable: true };
   }
   if (node.type === "import_statement") {
     const moduleName = node.descendantsOfType("string")[0];
@@ -415,9 +416,9 @@ const YAML_SCALARS = new Set([
   "block_scalar",
 ]);
 
-function yamlKeyText(key: SyntaxNode): string {
+function yamlKeyText(key: SyntaxNode): string | null {
   const scalar = deepestScalar(key) ?? key;
-  if (scalar.type === "double_quote_scalar") return decodeJsonString(scalar.text) ?? scalar.text;
+  if (scalar.type === "double_quote_scalar") return decodeYamlDoubleQuote(scalar.text);
   if (scalar.type === "single_quote_scalar") {
     const token = scalar.text;
     if (token.length < 2 || !token.startsWith("'") || !token.endsWith("'")) return token;
@@ -433,6 +434,64 @@ function deepestScalar(node: SyntaxNode): SyntaxNode | null {
     if (nested) found = nested;
   }
   return found;
+}
+
+const YAML_ESCAPES: Readonly<Record<string, string>> = {
+  "0": "\0",
+  a: "\u0007",
+  b: "\b",
+  t: "\t",
+  n: "\n",
+  v: "\v",
+  f: "\f",
+  r: "\r",
+  e: "\u001b",
+  " ": " ",
+  '"': '"',
+  "/": "/",
+  "\\": "\\",
+  N: "\u0085",
+  _: "\u00a0",
+  L: "\u2028",
+  P: "\u2029",
+};
+
+/** Decode a YAML double-quoted scalar. Returns null when an escape is unsupported. */
+function decodeYamlDoubleQuote(token: string): string | null {
+  if (token.length < 2 || !token.startsWith('"') || !token.endsWith('"')) return null;
+  const body = token.slice(1, -1);
+  let out = "";
+  for (let index = 0; index < body.length; index += 1) {
+    const ch = body[index];
+    if (ch === undefined) return null;
+    if (ch !== "\\") {
+      out += ch;
+      continue;
+    }
+    const next = body[index + 1];
+    if (next === undefined) return null;
+    if (next === "\n" || next === "\r") {
+      index += 1;
+      if (next === "\r" && body[index + 1] === "\n") index += 1;
+      while (body[index + 1] === " " || body[index + 1] === "\t") index += 1;
+      continue;
+    }
+    if (next === "x" || next === "u" || next === "U") {
+      const width = next === "x" ? 2 : next === "u" ? 4 : 8;
+      const hex = body.slice(index + 2, index + 2 + width);
+      if (hex.length !== width || !/^[0-9a-fA-F]+$/.test(hex)) return null;
+      const code = Number.parseInt(hex, 16);
+      if (code > 0x10ffff) return null;
+      out += String.fromCodePoint(code);
+      index += 1 + width;
+      continue;
+    }
+    const mapped = YAML_ESCAPES[next];
+    if (mapped === undefined) return null;
+    out += mapped;
+    index += 1;
+  }
+  return out;
 }
 
 /** Decode a JSON string token. Returns null when the token is not a JSON string. */
@@ -580,14 +639,20 @@ function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
           }
           const key = child.childForFieldName("key");
           const text = key ? yamlKeyText(key) : "";
-          if (text.length > 0 && seen.has(text)) {
+          if (text === null) {
+            issues.push({
+              line: child.startPosition.row + 1,
+              message: "Unsupported key spelling",
+              code: "yaml-key",
+            });
+          } else if (text.length > 0 && seen.has(text)) {
             issues.push({
               line: child.startPosition.row + 1,
               message: `Duplicate key ${JSON.stringify(text)}`,
               code: "duplicate",
             });
           }
-          if (text.length > 0) seen.add(text);
+          if (text !== null && text.length > 0) seen.add(text);
           const value = child.childForFieldName("value");
           if (value) visit(value);
         }

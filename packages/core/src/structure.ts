@@ -51,14 +51,30 @@ export function mergeRegions(
     return true;
   };
 
-  for (const item of currentList) {
-    if (!emit(item.key)) return null;
-  }
-  for (const item of incomingList) {
-    if (!emit(item.key)) return null;
-  }
-  for (const item of baseList) {
-    if (!emit(item.key)) return null;
+  const lists = [currentList, incomingList, baseList];
+  const flowWithComment =
+    lists.some((list) => list.some((item) => item.node.type === "flow_pair")) &&
+    lists.some((list) => list.some((item) => item.node.type === "comment"));
+  const emitFrom = (list: typeof currentList, kind: "pairs" | "other" | "all"): boolean => {
+    for (const item of list) {
+      const pair = item.node.type === "flow_pair";
+      if (kind === "pairs" && !pair) continue;
+      if (kind === "other" && pair) continue;
+      if (!emit(item.key)) return false;
+    }
+    return true;
+  };
+  if (flowWithComment) {
+    // A trailing comment is its own node. Pairs added after it would sit inside that comment.
+    for (const kind of ["pairs", "other"] as const) {
+      for (const list of lists) {
+        if (!emitFrom(list, kind)) return null;
+      }
+    }
+  } else {
+    for (const list of lists) {
+      if (!emitFrom(list, "all")) return null;
+    }
   }
 
   const trailing = mergeText(base.trailing, current.trailing, incoming.trailing);

@@ -133,7 +133,14 @@ function structuralCandidates(file: ConflictFile, hunk: ConflictHunk): Candidate
     return [];
   }
   const found: Candidate[] = [];
-  const merged = mergeRegions(base.region, current.region, incoming.region);
+  const unsupportedYamlKey =
+    file.languageId === "yaml" &&
+    [base, current, incoming].some((parsed) =>
+      parsed.symbolIssues.some((issue) => issue.code === "yaml-key"),
+    );
+  const merged = unsupportedYamlKey
+    ? null
+    : mergeRegions(base.region, current.region, incoming.region);
   if (merged !== null && merged !== hunk.current && merged !== hunk.incoming) {
     const strategy = onlyImportChanges(base.region, current.region, incoming.region)
       ? "list-union"

@@ -274,6 +274,33 @@ describe("structural strategies", () => {
     );
   });
 
+  it("keeps an added YAML flow key before a trailing comment", () => {
+    const chosen = proposalForLanguage(
+      "yaml",
+      "data.yaml",
+      "{ shared: 1 # note\n}\n",
+      "{ shared: 1, a: 1 # note\n}\n",
+      "{ shared: 1, b: 2 # note\n}\n",
+    );
+    expect(chosen?.recommended).toBe("hunk:1:structural-3way");
+    expect(chosen?.candidates[0]?.result).toBe("{ shared: 1, a: 1, b: 2 # note\n}\n");
+    expect(chosen?.candidates[0]?.band).toBe("high");
+  });
+
+  it("treats a YAML hex escape as the same key", () => {
+    const chosen = proposalForLanguage(
+      "yaml",
+      "data.yaml",
+      "{}\n",
+      "{ a: 1 }\n",
+      '{ "\\x61": 1 }\n',
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
   it("treats a quoted YAML key as the same key", () => {
     const chosen = proposalForLanguage("yaml", "data.yaml", "a: 1\n", "a: 2\n", '"a": 3\n');
     expect(chosen?.recommended).toBeNull();
@@ -347,10 +374,12 @@ describe("breakage checks", () => {
     const clean = parseSource("yaml", "a: 1\nb: 2\n");
     const duplicated = parseSource("yaml", "a: 1\na: 2\n");
     const quoted = parseSource("yaml", 'a: 1\n"a": 2\n');
-    if (!clean || !duplicated || !quoted) throw new Error("parser unavailable");
+    const hex = parseSource("yaml", 'a: 1\n"\\x61": 2\n');
+    if (!clean || !duplicated || !quoted || !hex) throw new Error("parser unavailable");
     expect(duplicated.hasErrors).toBe(false);
     expect(duplicated.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
     expect(quoted.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(hex.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
     expect(verifyParsed("data.yaml", duplicated, clean, clean).hazardous).toBe(true);
   });
 
