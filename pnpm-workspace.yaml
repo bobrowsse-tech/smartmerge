@@ -20,3 +20,4 @@ allowBuilds:
   "@tree-sitter-grammars/tree-sitter-kotlin": false
   tree-sitter-c-sharp: false
   tree-sitter-rust: false
+  tree-sitter-c: false

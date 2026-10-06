@@ -36,7 +36,7 @@ export interface ConcreteNode {
   type: string;
   /**
    * When false, an unstable node is not aligned by position.
-   * Python, Go, Java, Kotlin, and C# statements use this so two assignments are not merged just because they line up.
+   * Python, Go, Java, Kotlin, C#, Rust, and C statements use this so two assignments are not merged just because they line up.
    */
   positional: boolean;
   body: string;
@@ -77,6 +77,7 @@ export const STRUCTURAL_LANGUAGES = [
   "kotlin",
   "csharp",
   "rust",
+  "c",
 ] as const;
 
 const SUPPORTED = new Set<string>(STRUCTURAL_LANGUAGES);
@@ -205,6 +206,7 @@ async function loadParsers(): Promise<void> {
   const rust = await Language.load(
     grammar("tree-sitter-rust/tree-sitter-rust.wasm", "tree-sitter-rust.wasm"),
   );
+  const c = await Language.load(grammar("tree-sitter-c/tree-sitter-c.wasm", "tree-sitter-c.wasm"));
   languages = new Map<string, Language>([
     ["typescript", typescript],
     ["typescriptreact", tsx],
@@ -218,6 +220,7 @@ async function loadParsers(): Promise<void> {
     ["kotlin", kotlin],
     ["csharp", csharp],
     ["rust", rust],
+    ["c", c],
   ]);
 }
 
@@ -346,6 +349,11 @@ function keyFor(languageId: string, node: SyntaxNode): { key: string; stable: bo
     if (rustKey !== null) return { key: rustKey, stable: true };
     return { key: node.type, stable: false };
   }
+  if (languageId === "c") {
+    const cKey = cDefinitionKey(node);
+    if (cKey !== null) return { key: cKey, stable: true };
+    return { key: node.type, stable: false };
+  }
   const defined = pythonDefinition(node);
   if (defined) {
     const definitionName = defined.childForFieldName("name");
@@ -407,6 +415,8 @@ function objectInterior(
 function containerRange(
   node: SyntaxNode,
 ): { parent: SyntaxNode; start: number; end: number } | null {
+  const cBody = cItemBody(node);
+  if (cBody) return cBody;
   const rustBody = rustItemBody(node);
   if (rustBody) return rustBody;
   const kotlinBody = kotlinTypeBody(node);
@@ -598,7 +608,8 @@ function statementPositional(languageId: string, stable: boolean): boolean {
     languageId !== "java" &&
     languageId !== "kotlin" &&
     languageId !== "csharp" &&
-    languageId !== "rust"
+    languageId !== "rust" &&
+    languageId !== "c"
   );
 }
 
@@ -1029,6 +1040,133 @@ function collectRustSymbols(root: SyntaxNode): ParseIssue[] {
   return issues;
 }
 
+/** Name carried by a declarator, unwrapping pointers and parentheses. */
+function cNamedDeclarator(node: SyntaxNode | null): string {
+  let current = node;
+  while (current) {
+    if (current.type === "identifier" || current.type === "type_identifier") return current.text;
+    if (
+      current.type === "pointer_declarator" ||
+      current.type === "init_declarator" ||
+      current.type === "array_declarator" ||
+      current.type === "parenthesized_declarator"
+    ) {
+      current = current.childForFieldName("declarator") ?? current.namedChildren[0] ?? null;
+      continue;
+    }
+    return "";
+  }
+  return "";
+}
+
+/**
+ * Function name when the declarator is a function, not a function-pointer variable.
+ * A parenthesized declarator under the function declarator is a pointer variable.
+ */
+function cFunctionName(declarator: SyntaxNode | null): string | null {
+  let current = declarator;
+  while (current) {
+    if (
+      current.type === "pointer_declarator" ||
+      current.type === "init_declarator" ||
+      current.type === "array_declarator"
+    ) {
+      current = current.childForFieldName("declarator");
+      continue;
+    }
+    if (current.type !== "function_declarator") return null;
+    const inner = current.childForFieldName("declarator");
+    if (!inner || inner.type === "parenthesized_declarator") return null;
+    const name = cNamedDeclarator(inner);
+    return name.length > 0 ? name : null;
+  }
+  return null;
+}
+
+function cEnclosingEnum(node: SyntaxNode): string {
+  let current: SyntaxNode | null = node.parent;
+  while (current) {
+    if (current.type === "enum_specifier") return current.childForFieldName("name")?.text ?? "";
+    current = current.parent;
+  }
+  return "";
+}
+
+function cItemBody(node: SyntaxNode): { parent: SyntaxNode; start: number; end: number } | null {
+  if (node.type !== "enum_specifier") return null;
+  const name = node.childForFieldName("name")?.text ?? "";
+  if (name.length === 0) return null;
+  const body = node.childForFieldName("body");
+  if (!body || body.type !== "enumerator_list" || body.endIndex - body.startIndex < 2) return null;
+  return { parent: body, start: body.startIndex + 1, end: body.endIndex - 1 };
+}
+
+/** Stable key for a C function, type, enumerator, or macro. Statements stay unnamed. */
+function cDefinitionKey(node: SyntaxNode): string | null {
+  if (node.type === "function_definition") {
+    const name = cFunctionName(node.childForFieldName("declarator"));
+    return name === null ? null : `fn:${name}`;
+  }
+  if (node.type === "declaration") {
+    const name = cFunctionName(node.childForFieldName("declarator"));
+    return name === null ? null : `proto:${name}`;
+  }
+  if (
+    node.type === "struct_specifier" ||
+    node.type === "union_specifier" ||
+    node.type === "enum_specifier"
+  ) {
+    const name = node.childForFieldName("name")?.text ?? "";
+    if (name.length === 0) return null;
+    const kind =
+      node.type === "struct_specifier"
+        ? "struct"
+        : node.type === "union_specifier"
+          ? "union"
+          : "enum";
+    return `${kind}:${name}`;
+  }
+  if (node.type === "enumerator") {
+    const name = node.childForFieldName("name")?.text ?? "";
+    if (name.length === 0) return null;
+    const owner = cEnclosingEnum(node);
+    return owner.length > 0 ? `enumerator:${owner}.${name}` : `enumerator:${name}`;
+  }
+  if (node.type === "type_definition") {
+    const name = cNamedDeclarator(node.childForFieldName("declarator"));
+    return name.length > 0 ? `type:${name}` : null;
+  }
+  if (node.type === "preproc_def" || node.type === "preproc_function_def") {
+    const name = node.childForFieldName("name")?.text ?? "";
+    return name.length > 0 ? `macro:${name}` : null;
+  }
+  return null;
+}
+
+function collectCSymbols(root: SyntaxNode): ParseIssue[] {
+  const issues: ParseIssue[] = [];
+  const seen = new Set<string>();
+  const visit = (node: SyntaxNode): void => {
+    const key = cDefinitionKey(node);
+    if (key !== null) {
+      const repeatedFunction = key.startsWith("fn:");
+      if (repeatedFunction && seen.has(key)) {
+        const label = key.slice(key.indexOf(":") + 1);
+        issues.push({
+          line: node.startPosition.row + 1,
+          message: `Duplicate declaration ${label}`,
+          code: "duplicate",
+        });
+      }
+      if (repeatedFunction) seen.add(key);
+      if (node.type === "function_definition" || node.type === "declaration") return;
+    }
+    for (const child of node.namedChildren) visit(child);
+  };
+  visit(root);
+  return issues;
+}
+
 function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "python") return collectPythonSymbols(root);
   if (languageId === "go") return collectGoSymbols(root);
@@ -1036,6 +1174,7 @@ function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "kotlin") return collectKotlinSymbols(root);
   if (languageId === "csharp") return collectCsharpSymbols(root);
   if (languageId === "rust") return collectRustSymbols(root);
+  if (languageId === "c") return collectCSymbols(root);
   const issues: ParseIssue[] = [];
   const scopes: Array<Map<string, Binding>> = [new Map<string, Binding>()];
 

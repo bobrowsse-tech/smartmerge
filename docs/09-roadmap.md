@@ -52,6 +52,7 @@ Each milestone has acceptance criteria (AC). Do not start the next until all AC 
 - Python, Go, Java, Kotlin, C#, Rust plugins; JSON/YAML structural merge.
 - JSON object keys, YAML mapping keys, Python functions and classes, Go functions and methods, Java types and methods, Kotlin types and functions, C# types and methods, and Rust items merge structurally. Those results stay in the high band until a replay corpus exists.
 - **AC:** each language has corpus slice and meets precision gate, or is capped at `high` band with documented reason. The JSON, YAML, Python, Go, Java, Kotlin, C#, and Rust caps are the reason in the line above.
+- C functions, types, and macros use the same high-band cap. C++ and the rest of tier 3 are still open.
 
 ## M7 — More IDEs (week 20–30)
 

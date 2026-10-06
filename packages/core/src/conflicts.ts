@@ -278,6 +278,9 @@ function languageIdFor(path: string): string | null {
       return "go";
     case "rs":
       return "rust";
+    case "c":
+    case "h":
+      return "c";
     case "java":
       return "java";
     case "kt":

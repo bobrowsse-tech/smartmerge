@@ -285,6 +285,28 @@ describe("replayConflicts", () => {
     });
   });
 
+  it("keeps a C whole-file merge in the high band", async () => {
+    const report = await replayConflicts([
+      {
+        repository: "sample",
+        path: "file.c",
+        conflicted:
+          "prefix\n<<<<<<< current\n    return (\n=======\n    return [\n>>>>>>> incoming\nsuffix\n",
+        base: "int alpha(void) { return 1; }\nint beta(void) { return 1; }\n",
+        current: "int alpha(void) { return 2; }\nint beta(void) { return 1; }\n",
+        incoming: "int alpha(void) { return 1; }\nint beta(void) { return 3; }\n",
+        humanResult: "int alpha(void) { return 2; }\nint beta(void) { return 3; }\n",
+      },
+    ]);
+    expect(report.predicted).toBe(1);
+    expect(report.rows[0]).toEqual({
+      repository: "sample",
+      confidence: 0.95,
+      correct: true,
+      confidenceSource: "fixed-proposal",
+    });
+  });
+
   it("keeps a Kotlin whole-file merge in the high band", async () => {
     const report = await replayConflicts([
       {
