@@ -1,7 +1,6 @@
 {
   "name": "@smartmerge/mcp",
   "version": "0.0.0",
-  "private": true,
   "description": "MCP server that exposes SmartMergeResolver to coding agents. Writes follow agent policy.",
   "license": "Apache-2.0",
   "type": "module",

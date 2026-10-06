@@ -31,7 +31,7 @@ Publishing is a git operation, not a laptop `npm publish`.
 2. After it is on `main`, push a tag `vX.Y.Z` that points at that commit.
 3. The Publish workflow checks that the tag is on `main`, builds, and publishes any package that is not `"private": true`.
 
-The public npm package is `smart-merge-resolver` (`packages/cli`). Packages stay `"private": true` until a maintainer removes that flag on purpose. `prepublishOnly` exits if it is not running inside that tag workflow. Accepting the license does not publish a package.
+The public npm package is `smart-merge-resolver` (`packages/cli`). Packages stay `"private": true` until a maintainer removes that flag on purpose. The command package and the workspace packages it depends on are public. The editor package stays private. The tag sets the published version. `prepublishOnly` exits if it is not running inside that tag workflow. Accepting the license does not publish a package.
 
 ## License
 

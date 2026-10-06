@@ -52,11 +52,17 @@ jobs:
       - name: Publish public packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          SMARTMERGE_VERSION: ${{ github.ref_name }}
         run: |
           node --input-type=module <<'EOF'
           import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
           import { join } from "node:path";
 
+          const version = (process.env.SMARTMERGE_VERSION ?? "").replace(/^v/, "");
+          if (!/^\d+\.\d+\.\d+$/.test(version)) {
+            console.error("SMARTMERGE_VERSION must be a vX.Y.Z tag.");
+            process.exit(1);
+          }
           const names = [];
           function walk(dir) {
             for (const entry of readdirSync(dir)) {
@@ -66,7 +72,11 @@ jobs:
                 walk(full);
               } else if (entry === "package.json") {
                 const pkg = JSON.parse(readFileSync(full, "utf8"));
-                if (pkg.private !== true && typeof pkg.name === "string") names.push(pkg.name);
+                if (pkg.private !== true && typeof pkg.name === "string") {
+                  names.push(pkg.name);
+                  pkg.version = version;
+                  writeFileSync(full, `${JSON.stringify(pkg, null, 2)}\n`);
+                }
               }
             }
           }
@@ -81,6 +91,7 @@ jobs:
             console.error("Public packages exist but NPM_TOKEN is not set: " + names.join(", "));
             process.exit(1);
           }
+          console.log("Publishing " + names.join(", ") + " at " + version + ".");
           writeFileSync(modeFile, "publish");
           EOF
           if [ "$(cat "$RUNNER_TEMP/publish-mode")" = "publish" ]; then

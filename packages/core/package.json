@@ -1,7 +1,6 @@
 {
   "name": "@smartmerge/core",
   "version": "0.0.0",
-  "private": true,
   "description": "Merge pipeline. Recommends deterministic and structural resolutions for TypeScript, JavaScript, JSON, YAML, Python, Go, Java, Kotlin, C#, Rust, C, C++, and PHP.",
   "license": "MPL-2.0",
   "type": "module",
