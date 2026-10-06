@@ -283,6 +283,8 @@ function languageIdFor(path: string): string | null {
     case "kt":
     case "kts":
       return "kotlin";
+    case "cs":
+      return "csharp";
     default:
       return null;
   }

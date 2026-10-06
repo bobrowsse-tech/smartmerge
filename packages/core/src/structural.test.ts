@@ -651,6 +651,111 @@ describe("structural strategies", () => {
     );
   });
 
+  it("merges C# methods that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "csharp",
+      "Box.cs",
+      "class Box {\n  int Left() { return 1; }\n  int Right() { return 1; }\n}\n",
+      "class Box {\n  int Left() { return 2; }\n  int Right() { return 1; }\n}\n",
+      "class Box {\n  int Left() { return 1; }\n  int Right() { return 3; }\n}\n",
+    );
+    expect(chosen?.recommended).toBe("hunk:1:structural-3way");
+    expect(chosen?.candidates[0]).toMatchObject({
+      result: "class Box {\n  int Left() { return 2; }\n  int Right() { return 3; }\n}\n",
+      band: "high",
+      confidence: 0.95,
+      hazardous: false,
+      evidence: [
+        {
+          code: "csharp-types",
+          text: "Each side edited different types or methods. Untouched text is copied from the base.",
+        },
+      ],
+    });
+    expect(chosen?.autoApplyEligible).toBe(false);
+  });
+
+  it("keeps a C# constructor and a method edited on the other side", () => {
+    const chosen = proposalForLanguage(
+      "csharp",
+      "Box.cs",
+      "class Box {\n  int Left() { return 1; }\n}\n",
+      "class Box {\n  public Box() { }\n  int Left() { return 1; }\n}\n",
+      "class Box {\n  int Left() { return 2; }\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "class Box {\n  public Box() { }\n  int Left() { return 2; }\n}\n",
+    );
+    expect(chosen?.candidates[0]?.band).toBe("high");
+  });
+
+  it("merges a C# class, interface, struct, and enum when each side edits a different member", () => {
+    const chosen = proposalForLanguage(
+      "csharp",
+      "Types.cs",
+      "class Box {\n  int Left() { return 1; }\n}\ninterface Bag {\n  int Size();\n}\nstruct Point {\n  int X;\n}\nenum Hue { Red }\n",
+      "class Box {\n  int Left() { return 2; }\n}\ninterface Bag {\n  int Size();\n}\nstruct Point {\n  int X;\n}\nenum Hue { Red }\n",
+      "class Box {\n  int Left() { return 1; }\n}\ninterface Bag {\n  int Size();\n  int Other();\n}\nstruct Point {\n  int X;\n}\nenum Hue { Red }\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "class Box {\n  int Left() { return 2; }\n}\ninterface Bag {\n  int Size();\n  int Other();\n}\nstruct Point {\n  int X;\n}\nenum Hue { Red }\n",
+    );
+  });
+
+  it("keeps methods with the same name on different C# types", () => {
+    const chosen = proposalForLanguage(
+      "csharp",
+      "Types.cs",
+      "class Box {\n  int Left() { return 1; }\n}\nclass Bag {\n  int Left() { return 1; }\n}\n",
+      "class Box {\n  int Left() { return 2; }\n}\nclass Bag {\n  int Left() { return 1; }\n}\n",
+      "class Box {\n  int Left() { return 1; }\n}\nclass Bag {\n  int Left() { return 3; }\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "class Box {\n  int Left() { return 2; }\n}\nclass Bag {\n  int Left() { return 3; }\n}\n",
+    );
+  });
+
+  it("merges C# classes inside one namespace", () => {
+    const chosen = proposalForLanguage(
+      "csharp",
+      "App.cs",
+      "namespace App {\n  class Box { int Left() { return 1; } }\n  class Bag { int Left() { return 1; } }\n}\n",
+      "namespace App {\n  class Box { int Left() { return 2; } }\n  class Bag { int Left() { return 1; } }\n}\n",
+      "namespace App {\n  class Box { int Left() { return 1; } }\n  class Bag { int Left() { return 3; } }\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "namespace App {\n  class Box { int Left() { return 2; } }\n  class Bag { int Left() { return 3; } }\n}\n",
+    );
+  });
+
+  it("does not merge C# fields by position", () => {
+    const chosen = proposalForLanguage(
+      "csharp",
+      "Box.cs",
+      "class Box {\n  int x = 1;\n  int y = 1;\n}\n",
+      "class Box {\n  int x = 2;\n  int y = 1;\n}\n",
+      "class Box {\n  int x = 1;\n  int y = 3;\n}\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge a C# method that both sides change", () => {
+    const chosen = proposalForLanguage(
+      "csharp",
+      "Box.cs",
+      "class Box {\n  int Left() { return 1; }\n}\n",
+      "class Box {\n  int Left() { return 2; }\n}\n",
+      "class Box {\n  int Left() { return 3; }\n}\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
   it("does not merge a Python function that both sides change", () => {
     const chosen = proposalForLanguage(
       "python",
@@ -684,6 +789,7 @@ describe("structural languages", () => {
     expect(STRUCTURAL_LANGUAGES).toContain("go");
     expect(STRUCTURAL_LANGUAGES).toContain("java");
     expect(STRUCTURAL_LANGUAGES).toContain("kotlin");
+    expect(STRUCTURAL_LANGUAGES).toContain("csharp");
     for (const languageId of STRUCTURAL_LANGUAGES) {
       expect(isStructuralLanguage(languageId)).toBe(true);
     }
@@ -738,6 +844,25 @@ describe("breakage checks", () => {
     expect(quoted.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
     expect(hex.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
     expect(verifyParsed("data.yaml", duplicated, clean, clean).hazardous).toBe(true);
+  });
+
+  it("flags a repeated C# method and ignores an undeclared call", () => {
+    const clean = parseSource("csharp", "class Box {\n  int Left() { return 1; }\n}\n");
+    const duplicated = parseSource(
+      "csharp",
+      "class Box {\n  int Left() { return 1; }\n  int Left() { return 2; }\n}\n",
+    );
+    const differentType = parseSource(
+      "csharp",
+      "class Box {\n  int Left() { return 1; }\n}\nclass Bag {\n  int Left() { return 2; }\n}\n",
+    );
+    const called = parseSource("csharp", "class Box {\n  int Left() { return missing(); }\n}\n");
+    if (!clean || !duplicated || !differentType || !called) throw new Error("parser unavailable");
+    expect(duplicated.hasErrors).toBe(false);
+    expect(duplicated.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(differentType.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
+    expect(called.symbolIssues.some((issue) => issue.code === "undeclared")).toBe(false);
+    expect(verifyParsed("Box.cs", duplicated, clean, clean).hazardous).toBe(true);
   });
 
   it("flags a repeated Kotlin function and ignores an undeclared call", () => {

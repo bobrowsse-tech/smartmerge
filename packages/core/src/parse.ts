@@ -36,7 +36,7 @@ export interface ConcreteNode {
   type: string;
   /**
    * When false, an unstable node is not aligned by position.
-   * Python, Go, Java, and Kotlin statements use this so two assignments are not merged just because they line up.
+   * Python, Go, Java, Kotlin, and C# statements use this so two assignments are not merged just because they line up.
    */
   positional: boolean;
   body: string;
@@ -75,6 +75,7 @@ export const STRUCTURAL_LANGUAGES = [
   "go",
   "java",
   "kotlin",
+  "csharp",
 ] as const;
 
 const SUPPORTED = new Set<string>(STRUCTURAL_LANGUAGES);
@@ -197,6 +198,9 @@ async function loadParsers(): Promise<void> {
       "tree-sitter-kotlin.wasm",
     ),
   );
+  const csharp = await Language.load(
+    grammar("tree-sitter-c-sharp/tree-sitter-c_sharp.wasm", "tree-sitter-c_sharp.wasm"),
+  );
   languages = new Map<string, Language>([
     ["typescript", typescript],
     ["typescriptreact", tsx],
@@ -208,6 +212,7 @@ async function loadParsers(): Promise<void> {
     ["go", go],
     ["java", java],
     ["kotlin", kotlin],
+    ["csharp", csharp],
   ]);
 }
 
@@ -326,6 +331,11 @@ function keyFor(languageId: string, node: SyntaxNode): { key: string; stable: bo
     if (kotlinKey !== null) return { key: kotlinKey, stable: true };
     return { key: node.type, stable: false };
   }
+  if (languageId === "csharp") {
+    const csharpKey = csharpDefinitionKey(node);
+    if (csharpKey !== null) return { key: csharpKey, stable: true };
+    return { key: node.type, stable: false };
+  }
   const defined = pythonDefinition(node);
   if (defined) {
     const definitionName = defined.childForFieldName("name");
@@ -389,6 +399,8 @@ function containerRange(
 ): { parent: SyntaxNode; start: number; end: number } | null {
   const kotlinBody = kotlinTypeBody(node);
   if (kotlinBody) return kotlinBody;
+  const csharpBody = csharpTypeBody(node);
+  if (csharpBody) return csharpBody;
   const defined = pythonDefinition(node);
   if (defined?.type === "class_definition") {
     const body = defined.childForFieldName("body");
@@ -572,7 +584,8 @@ function statementPositional(languageId: string, stable: boolean): boolean {
     languageId !== "python" &&
     languageId !== "go" &&
     languageId !== "java" &&
-    languageId !== "kotlin"
+    languageId !== "kotlin" &&
+    languageId !== "csharp"
   );
 }
 
@@ -697,6 +710,61 @@ function kotlinDefinitionKey(node: SyntaxNode): string | null {
   return owner.length > 0 ? `fun:${owner}.${name}` : `fun:${name}`;
 }
 
+const CSHARP_TYPE_DECLARATIONS = new Set([
+  "class_declaration",
+  "interface_declaration",
+  "struct_declaration",
+  "enum_declaration",
+]);
+
+function csharpKind(type: string): string {
+  if (type === "interface_declaration") return "interface";
+  if (type === "struct_declaration") return "struct";
+  if (type === "enum_declaration") return "enum";
+  return "class";
+}
+
+/** Enclosing namespace and type names, outer first. */
+function csharpEnclosingName(node: SyntaxNode): string {
+  const parts: string[] = [];
+  let current: SyntaxNode | null = node.parent;
+  while (current) {
+    if (CSHARP_TYPE_DECLARATIONS.has(current.type) || current.type === "namespace_declaration") {
+      const name = current.childForFieldName("name")?.text ?? "";
+      if (name.length > 0) parts.unshift(name);
+    }
+    current = current.parent;
+  }
+  return parts.join(".");
+}
+
+function csharpTypeBody(
+  node: SyntaxNode,
+): { parent: SyntaxNode; start: number; end: number } | null {
+  if (!CSHARP_TYPE_DECLARATIONS.has(node.type) && node.type !== "namespace_declaration")
+    return null;
+  if (node.type === "enum_declaration") return null;
+  const body = node.childForFieldName("body");
+  if (!body || body.type !== "declaration_list" || body.endIndex - body.startIndex < 2) return null;
+  return { parent: body, start: body.startIndex + 1, end: body.endIndex - 1 };
+}
+
+/** Stable key for a C# type, namespace, method, or constructor. Nested names keep their parent. */
+function csharpDefinitionKey(node: SyntaxNode): string | null {
+  const name = node.childForFieldName("name")?.text ?? "";
+  if (name.length === 0) return null;
+  const owner = csharpEnclosingName(node);
+  const label = owner.length > 0 ? `${owner}.${name}` : name;
+  if (node.type === "namespace_declaration" || node.type === "file_scoped_namespace_declaration") {
+    return `namespace:${label}`;
+  }
+  if (CSHARP_TYPE_DECLARATIONS.has(node.type)) return `${csharpKind(node.type)}:${label}`;
+  if (node.type !== "method_declaration" && node.type !== "constructor_declaration") return null;
+  if (owner.length === 0) return null;
+  const kind = node.type === "constructor_declaration" ? "constructor" : "method";
+  return `${kind}:${label}`;
+}
+
 function pythonDefinition(node: SyntaxNode): SyntaxNode | null {
   if (node.type === "function_definition" || node.type === "class_definition") return node;
   if (node.type !== "decorated_definition") return null;
@@ -801,11 +869,35 @@ function collectKotlinSymbols(root: SyntaxNode): ParseIssue[] {
   return issues;
 }
 
+function collectCsharpSymbols(root: SyntaxNode): ParseIssue[] {
+  const issues: ParseIssue[] = [];
+  const seen = new Set<string>();
+  const visit = (node: SyntaxNode): void => {
+    const key = csharpDefinitionKey(node);
+    if (key !== null) {
+      if (seen.has(key)) {
+        const label = key.slice(key.indexOf(":") + 1);
+        issues.push({
+          line: node.startPosition.row + 1,
+          message: `Duplicate declaration ${label}`,
+          code: "duplicate",
+        });
+      }
+      seen.add(key);
+      if (node.type === "method_declaration" || node.type === "constructor_declaration") return;
+    }
+    for (const child of node.namedChildren) visit(child);
+  };
+  visit(root);
+  return issues;
+}
+
 function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "python") return collectPythonSymbols(root);
   if (languageId === "go") return collectGoSymbols(root);
   if (languageId === "java") return collectJavaSymbols(root);
   if (languageId === "kotlin") return collectKotlinSymbols(root);
+  if (languageId === "csharp") return collectCsharpSymbols(root);
   const issues: ParseIssue[] = [];
   const scopes: Array<Map<string, Binding>> = [new Map<string, Binding>()];
 
