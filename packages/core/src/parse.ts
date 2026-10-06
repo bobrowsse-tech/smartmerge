@@ -1476,8 +1476,8 @@ function phpStatementNamespace(node: SyntaxNode): string {
     current = current.parent;
   }
   let found = "";
-  let cursor: SyntaxNode | null = node;
-  while (cursor) {
+  let cursor: SyntaxNode = node;
+  for (;;) {
     const parent: SyntaxNode | null = cursor.parent;
     if (!parent) break;
     for (const sibling of parent.namedChildren) {
