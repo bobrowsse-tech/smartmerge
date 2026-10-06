@@ -31,7 +31,7 @@ export function mergeRegions(
     const node = currentMap.get(key) ?? incomingMap.get(key) ?? baseMap.get(key);
     let piece = mergeKey(baseMap.get(key), currentMap.get(key), incomingMap.get(key));
     if (piece === null) return false;
-    if (piece !== OMIT && node?.type === "pair") {
+    if (piece !== OMIT && node !== undefined && isFlowPair(node.type)) {
       // Commas sit on the following pair. The first kept pair must not keep a
       // comma that belonged to a deleted predecessor, and a newly adjacent pair
       // needs a comma when neither slice already has one.
@@ -51,14 +51,30 @@ export function mergeRegions(
     return true;
   };
 
-  for (const item of currentList) {
-    if (!emit(item.key)) return null;
-  }
-  for (const item of incomingList) {
-    if (!emit(item.key)) return null;
-  }
-  for (const item of baseList) {
-    if (!emit(item.key)) return null;
+  const lists = [currentList, incomingList, baseList];
+  const flowWithComment =
+    lists.some((list) => list.some((item) => item.node.type === "flow_pair")) &&
+    lists.some((list) => list.some((item) => item.node.type === "comment"));
+  const emitFrom = (list: typeof currentList, kind: "pairs" | "other" | "all"): boolean => {
+    for (const item of list) {
+      const pair = item.node.type === "flow_pair";
+      if (kind === "pairs" && !pair) continue;
+      if (kind === "other" && pair) continue;
+      if (!emit(item.key)) return false;
+    }
+    return true;
+  };
+  if (flowWithComment) {
+    // A trailing comment is its own node. Pairs added after it would sit inside that comment.
+    for (const kind of ["pairs", "other"] as const) {
+      for (const list of lists) {
+        if (!emitFrom(list, kind)) return null;
+      }
+    }
+  } else {
+    for (const list of lists) {
+      if (!emitFrom(list, "all")) return null;
+    }
   }
 
   const trailing = mergeText(base.trailing, current.trailing, incoming.trailing);
@@ -247,6 +263,10 @@ function assignKeys(
     if (occurrence > 0) key = `${key}#${String(occurrence + 1)}`;
     return { key, node };
   });
+}
+
+function isFlowPair(type: string): boolean {
+  return type === "pair" || type === "flow_pair";
 }
 
 function stripLeadingComma(slice: string): string {

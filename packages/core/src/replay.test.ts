@@ -172,6 +172,28 @@ describe("replayConflicts", () => {
     });
   });
 
+  it("keeps a YAML whole-file merge in the high band", async () => {
+    const report = await replayConflicts([
+      {
+        repository: "sample",
+        path: "data.yaml",
+        conflicted:
+          "prefix\n<<<<<<< current\n  name: [\n=======\n  age: [\n>>>>>>> incoming\nsuffix\n",
+        base: "shared: 1\n",
+        current: "shared: 1\na: 1\n",
+        incoming: "shared: 1\nb: 2\n",
+        humanResult: "shared: 1\na: 1\nb: 2\n",
+      },
+    ]);
+    expect(report.predicted).toBe(1);
+    expect(report.rows[0]).toEqual({
+      repository: "sample",
+      confidence: 0.95,
+      correct: true,
+      confidenceSource: "fixed-proposal",
+    });
+  });
+
   it("leaves a fragment unresolved when the parent files were not stored", async () => {
     const conflicted =
       "prefix\n<<<<<<< current\n    return value + 10;\n  }\n=======\n    return value + 20;\n  }\n>>>>>>> incoming\nsuffix\n";
