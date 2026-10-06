@@ -33,7 +33,7 @@
     "action.yml"
   ],
   "scripts": {
-    "build": "tsc -b && tsx bundle.ts",
+    "build": "tsc -b && tsx src/bundle.ts",
     "test": "vitest run --config ../../vitest.config.ts",
     "prepublishOnly": "tsx ../../tools/assert-git-publish.ts"
   },

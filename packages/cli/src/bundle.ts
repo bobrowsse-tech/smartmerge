@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
-const packageRoot = dirname(fileURLToPath(import.meta.url));
+const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const repoRoot = dirname(dirname(packageRoot));
 const dist = join(packageRoot, "dist");
 const require = createRequire(join(repoRoot, "packages/core/package.json"));
