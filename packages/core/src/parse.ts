@@ -36,7 +36,7 @@ export interface ConcreteNode {
   type: string;
   /**
    * When false, an unstable node is not aligned by position.
-   * Python, Go, and Java statements use this so two assignments are not merged just because they line up.
+   * Python, Go, Java, and Kotlin statements use this so two assignments are not merged just because they line up.
    */
   positional: boolean;
   body: string;
@@ -74,6 +74,7 @@ export const STRUCTURAL_LANGUAGES = [
   "python",
   "go",
   "java",
+  "kotlin",
 ] as const;
 
 const SUPPORTED = new Set<string>(STRUCTURAL_LANGUAGES);
@@ -190,6 +191,12 @@ async function loadParsers(): Promise<void> {
   const java = await Language.load(
     grammar("tree-sitter-java/tree-sitter-java.wasm", "tree-sitter-java.wasm"),
   );
+  const kotlin = await Language.load(
+    grammar(
+      "@tree-sitter-grammars/tree-sitter-kotlin/tree-sitter-kotlin.wasm",
+      "tree-sitter-kotlin.wasm",
+    ),
+  );
   languages = new Map<string, Language>([
     ["typescript", typescript],
     ["typescriptreact", tsx],
@@ -200,6 +207,7 @@ async function loadParsers(): Promise<void> {
     ["python", python],
     ["go", go],
     ["java", java],
+    ["kotlin", kotlin],
   ]);
 }
 
@@ -306,11 +314,16 @@ function keyFor(languageId: string, node: SyntaxNode): { key: string; stable: bo
     const local = node.childForFieldName("alias") ?? node.childForFieldName("name");
     if (local) return { key: `import_specifier:${local.text}`, stable: true };
   }
-  const goKey = goDefinitionKey(node);
+  const goKey = languageId === "go" ? goDefinitionKey(node) : null;
   if (goKey !== null) return { key: goKey, stable: true };
   if (languageId === "java") {
     const javaKey = javaDefinitionKey(node);
     if (javaKey !== null) return { key: javaKey, stable: true };
+    return { key: node.type, stable: false };
+  }
+  if (languageId === "kotlin") {
+    const kotlinKey = kotlinDefinitionKey(node);
+    if (kotlinKey !== null) return { key: kotlinKey, stable: true };
     return { key: node.type, stable: false };
   }
   const defined = pythonDefinition(node);
@@ -374,6 +387,8 @@ function objectInterior(
 function containerRange(
   node: SyntaxNode,
 ): { parent: SyntaxNode; start: number; end: number } | null {
+  const kotlinBody = kotlinTypeBody(node);
+  if (kotlinBody) return kotlinBody;
   const defined = pythonDefinition(node);
   if (defined?.type === "class_definition") {
     const body = defined.childForFieldName("body");
@@ -553,7 +568,12 @@ function decodeJsonString(token: string): string | null {
 
 function statementPositional(languageId: string, stable: boolean): boolean {
   if (stable) return true;
-  return languageId !== "python" && languageId !== "go" && languageId !== "java";
+  return (
+    languageId !== "python" &&
+    languageId !== "go" &&
+    languageId !== "java" &&
+    languageId !== "kotlin"
+  );
 }
 
 function goReceiverType(receiver: SyntaxNode): string {
@@ -621,6 +641,60 @@ function javaDefinitionKey(node: SyntaxNode): string | null {
   if (owner.length === 0) return null;
   const kind = node.type === "constructor_declaration" ? "constructor" : "method";
   return `${kind}:${owner}.${name}`;
+}
+
+const KOTLIN_TYPE_DECLARATIONS = new Set(["class_declaration", "object_declaration"]);
+
+function kotlinKeyword(node: SyntaxNode): string {
+  for (let index = 0; index < node.childCount; index += 1) {
+    const child = node.child(index);
+    if (!child) continue;
+    if (child.type === "class" || child.type === "interface") return child.type;
+  }
+  return "class";
+}
+
+/** Enclosing class and object names, outer first. An interface is a class declaration. */
+function kotlinEnclosingType(node: SyntaxNode): string {
+  const parts: string[] = [];
+  let current: SyntaxNode | null = node.parent;
+  while (current) {
+    if (KOTLIN_TYPE_DECLARATIONS.has(current.type)) {
+      const name = current.childForFieldName("name")?.text ?? "";
+      if (name.length > 0) parts.unshift(name);
+    }
+    current = current.parent;
+  }
+  return parts.join(".");
+}
+
+function kotlinTypeBody(
+  node: SyntaxNode,
+): { parent: SyntaxNode; start: number; end: number } | null {
+  if (!KOTLIN_TYPE_DECLARATIONS.has(node.type)) return null;
+  const body = node.namedChildren.find((child) => child.type === "class_body");
+  if (!body || body.endIndex - body.startIndex < 2) return null;
+  return { parent: body, start: body.startIndex + 1, end: body.endIndex - 1 };
+}
+
+/** Stable key for a Kotlin type or function. Nested types keep their parent. */
+function kotlinDefinitionKey(node: SyntaxNode): string | null {
+  const name = node.childForFieldName("name")?.text ?? "";
+  if (name.length === 0) return null;
+  if (KOTLIN_TYPE_DECLARATIONS.has(node.type)) {
+    const parent = kotlinEnclosingType(node);
+    const label = parent.length > 0 ? `${parent}.${name}` : name;
+    const kind =
+      node.type === "object_declaration"
+        ? "object"
+        : kotlinKeyword(node) === "interface"
+          ? "interface"
+          : "class";
+    return `${kind}:${label}`;
+  }
+  if (node.type !== "function_declaration") return null;
+  const owner = kotlinEnclosingType(node);
+  return owner.length > 0 ? `fun:${owner}.${name}` : `fun:${name}`;
 }
 
 function pythonDefinition(node: SyntaxNode): SyntaxNode | null {
@@ -704,10 +778,34 @@ function collectJavaSymbols(root: SyntaxNode): ParseIssue[] {
   return issues;
 }
 
+function collectKotlinSymbols(root: SyntaxNode): ParseIssue[] {
+  const issues: ParseIssue[] = [];
+  const seen = new Set<string>();
+  const visit = (node: SyntaxNode): void => {
+    const key = kotlinDefinitionKey(node);
+    if (key !== null) {
+      if (seen.has(key)) {
+        const label = key.slice(key.indexOf(":") + 1);
+        issues.push({
+          line: node.startPosition.row + 1,
+          message: `Duplicate declaration ${label}`,
+          code: "duplicate",
+        });
+      }
+      seen.add(key);
+      if (node.type === "function_declaration") return;
+    }
+    for (const child of node.namedChildren) visit(child);
+  };
+  visit(root);
+  return issues;
+}
+
 function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "python") return collectPythonSymbols(root);
   if (languageId === "go") return collectGoSymbols(root);
   if (languageId === "java") return collectJavaSymbols(root);
+  if (languageId === "kotlin") return collectKotlinSymbols(root);
   const issues: ParseIssue[] = [];
   const scopes: Array<Map<string, Binding>> = [new Map<string, Binding>()];
 
