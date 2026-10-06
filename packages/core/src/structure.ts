@@ -15,6 +15,7 @@ export function mergeRegions(
   const sameShape = sameShapeAs(base, current) && sameShapeAs(base, incoming);
   if (!sameShape && unstableBlob(base) !== unstableBlob(current)) return null;
   if (!sameShape && unstableBlob(base) !== unstableBlob(incoming)) return null;
+  if (blockedUnstable(base, current) || blockedUnstable(base, incoming)) return null;
 
   const baseList = assignKeys(base.nodes, sameShape);
   const currentList = assignKeys(current.nodes, sameShape);
@@ -234,6 +235,11 @@ function skeleton(identifiers: readonly IdentifierSpan[], source: string): strin
 function sameShapeAs(base: ConcreteRegion, other: ConcreteRegion): boolean {
   if (base.nodes.length !== other.nodes.length) return false;
   return base.nodes.every((node, index) => node.type === other.nodes[index]?.type);
+}
+
+function blockedUnstable(base: ConcreteRegion, other: ConcreteRegion): boolean {
+  const locked = [...base.nodes, ...other.nodes].some((node) => !node.stable && !node.positional);
+  return locked && unstableBlob(base) !== unstableBlob(other);
 }
 
 function unstableBlob(region: ConcreteRegion): string {

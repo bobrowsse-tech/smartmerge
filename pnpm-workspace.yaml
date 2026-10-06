@@ -14,3 +14,4 @@ allowBuilds:
   tree-sitter-json: false
   tree-sitter-typescript: false
   "@tree-sitter-grammars/tree-sitter-yaml": false
+  tree-sitter-python: false
