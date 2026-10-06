@@ -50,8 +50,8 @@ Each milestone has acceptance criteria (AC). Do not start the next until all AC 
 ## M6 — Language expansion (week 18–26)
 
 - Python, Go, Java, Kotlin, C#, Rust plugins; JSON/YAML structural merge.
-- JSON object keys, YAML mapping keys, Python functions and classes, and Go functions and methods merge structurally. Those results stay in the high band until a replay corpus exists. Java, Kotlin, C#, and Rust are still open.
-- **AC:** each language has corpus slice and meets precision gate, or is capped at `high` band with documented reason. The JSON, YAML, Python, and Go caps are the reason in the line above.
+- JSON object keys, YAML mapping keys, Python functions and classes, Go functions and methods, and Java types and methods merge structurally. Those results stay in the high band until a replay corpus exists. Kotlin, C#, and Rust are still open.
+- **AC:** each language has corpus slice and meets precision gate, or is capped at `high` band with documented reason. The JSON, YAML, Python, Go, and Java caps are the reason in the line above.
 
 ## M7 — More IDEs (week 20–30)
 

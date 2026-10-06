@@ -115,7 +115,9 @@ Python functions and classes merge by name. Methods added on each side of the sa
 
 Go functions merge by name. Methods merge by receiver type and name, so two methods with the same name on different types stay distinct. A function or method that both sides change is left alone. Statements and short declarations are not merged by position. A clean Go structural result stays in the high confidence band until a Go replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
 
-Tier 2: Java, Kotlin, C#, Rust. Python functions and classes, and Go functions and methods, are covered above.
+Java classes, interfaces, and enums merge by name. A nested type includes its enclosing type, so two nested types with the same simple name stay distinct. Methods and constructors merge by enclosing type and name. A method or constructor that both sides change is left alone, including two overloads of the same name. Fields and statements are not merged by position. A clean Java structural result stays in the high confidence band until a Java replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
+
+Tier 2: Kotlin, C#, Rust. Python functions and classes, Go functions and methods, and Java types and methods are covered above.
 Tier 3: C/C++, PHP, Ruby, Swift, SQL, TOML, XML.
 Unsupported: line-based strategies only, confidence caps apply.
 
