@@ -113,7 +113,9 @@ YAML mappings merge by key the same way. Sequences stay order-sensitive. A plain
 
 Python functions and classes merge by name. Methods added on each side of the same class are kept. A function or class that both sides change is left alone. Assignments and other statements are not merged by position. A clean Python structural result stays in the high confidence band until a Python replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
 
-Tier 2: Go, Java, Kotlin, C#, Rust. Python functions and classes are covered above.
+Go functions merge by name. Methods merge by receiver type and name, so two methods with the same name on different types stay distinct. A function or method that both sides change is left alone. Statements and short declarations are not merged by position. A clean Go structural result stays in the high confidence band until a Go replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
+
+Tier 2: Java, Kotlin, C#, Rust. Python functions and classes, and Go functions and methods, are covered above.
 Tier 3: C/C++, PHP, Ruby, Swift, SQL, TOML, XML.
 Unsupported: line-based strategies only, confidence caps apply.
 

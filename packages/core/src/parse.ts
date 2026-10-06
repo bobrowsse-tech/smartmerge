@@ -72,6 +72,7 @@ export const STRUCTURAL_LANGUAGES = [
   "json",
   "yaml",
   "python",
+  "go",
 ] as const;
 
 const SUPPORTED = new Set<string>(STRUCTURAL_LANGUAGES);
@@ -182,6 +183,9 @@ async function loadParsers(): Promise<void> {
   const python = await Language.load(
     grammar("tree-sitter-python/tree-sitter-python.wasm", "tree-sitter-python.wasm"),
   );
+  const go = await Language.load(
+    grammar("tree-sitter-go/tree-sitter-go.wasm", "tree-sitter-go.wasm"),
+  );
   languages = new Map<string, Language>([
     ["typescript", typescript],
     ["typescriptreact", tsx],
@@ -190,6 +194,7 @@ async function loadParsers(): Promise<void> {
     ["json", json],
     ["yaml", yaml],
     ["python", python],
+    ["go", go],
   ]);
 }
 
@@ -250,7 +255,7 @@ function toNode(languageId: string, source: string, node: SyntaxNode, slice: str
       key: key.key,
       stable: key.stable,
       type: declared.type,
-      positional: key.stable || languageId !== "python",
+      positional: statementPositional(languageId, key.stable),
       body,
       slice,
       prefix: "",
@@ -262,7 +267,7 @@ function toNode(languageId: string, source: string, node: SyntaxNode, slice: str
     key: key.key,
     stable: key.stable,
     type: declared.type,
-    positional: key.stable || languageId !== "python",
+    positional: statementPositional(languageId, key.stable),
     body,
     slice,
     prefix: source.slice(node.startIndex, inner.start),
@@ -296,6 +301,8 @@ function keyFor(languageId: string, node: SyntaxNode): { key: string; stable: bo
     const local = node.childForFieldName("alias") ?? node.childForFieldName("name");
     if (local) return { key: `import_specifier:${local.text}`, stable: true };
   }
+  const goKey = goDefinitionKey(node);
+  if (goKey !== null) return { key: goKey, stable: true };
   const defined = pythonDefinition(node);
   if (defined) {
     const definitionName = defined.childForFieldName("name");
@@ -534,6 +541,36 @@ function decodeJsonString(token: string): string | null {
   }
 }
 
+function statementPositional(languageId: string, stable: boolean): boolean {
+  if (stable) return true;
+  return languageId !== "python" && languageId !== "go";
+}
+
+function goReceiverType(receiver: SyntaxNode): string {
+  const declared = receiver.namedChildren[0];
+  const typeNode = declared?.childForFieldName("type");
+  if (!typeNode) return "";
+  if (typeNode.type === "pointer_type") {
+    const name = typeNode.namedChildren[0]?.text ?? "";
+    return name.length > 0 ? `*${name}` : "";
+  }
+  return typeNode.text;
+}
+
+/** Stable key for a Go function or method. Methods include the receiver type. */
+function goDefinitionKey(node: SyntaxNode): string | null {
+  if (node.type === "function_declaration") {
+    const name = node.childForFieldName("name")?.text ?? "";
+    return name.length > 0 ? `func:${name}` : null;
+  }
+  if (node.type !== "method_declaration") return null;
+  const name = node.childForFieldName("name")?.text ?? "";
+  const receiver = node.childForFieldName("receiver");
+  const typeName = receiver ? goReceiverType(receiver) : "";
+  if (name.length === 0 || typeName.length === 0) return null;
+  return `method:${typeName}.${name}`;
+}
+
 function pythonDefinition(node: SyntaxNode): SyntaxNode | null {
   if (node.type === "function_definition" || node.type === "class_definition") return node;
   if (node.type !== "decorated_definition") return null;
@@ -569,8 +606,32 @@ function collectPythonSymbols(root: SyntaxNode): ParseIssue[] {
   return issues;
 }
 
+function collectGoSymbols(root: SyntaxNode): ParseIssue[] {
+  const issues: ParseIssue[] = [];
+  const seen = new Set<string>();
+  const visit = (node: SyntaxNode): void => {
+    const key = goDefinitionKey(node);
+    if (key !== null) {
+      if (seen.has(key)) {
+        const label = key.slice(key.indexOf(":") + 1);
+        issues.push({
+          line: node.startPosition.row + 1,
+          message: `Duplicate declaration ${label}`,
+          code: "duplicate",
+        });
+      }
+      seen.add(key);
+      return;
+    }
+    for (const child of node.namedChildren) visit(child);
+  };
+  visit(root);
+  return issues;
+}
+
 function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "python") return collectPythonSymbols(root);
+  if (languageId === "go") return collectGoSymbols(root);
   const issues: ParseIssue[] = [];
   const scopes: Array<Map<string, Binding>> = [new Map<string, Binding>()];
 

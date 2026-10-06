@@ -22,17 +22,47 @@ const UNCHECKED_CAP = 0.8;
 
 /**
  * Fixed score for a structural result after syntax and symbol checks.
- * JSON, YAML, and Python stay in the high band until a replay corpus exists, so a clean merge is not marked certain.
+ * JSON, YAML, Python, and Go stay in the high band until a replay corpus exists, so a clean merge is not marked certain.
  */
+const HIGH_UNTIL_CORPUS = new Set(["json", "yaml", "python", "go"]);
+
 export function structuralScore(
   languageId: string,
   hazardous: boolean,
 ): { confidence: number; band: ConfidenceBand } {
   if (hazardous) return { confidence: 0.2, band: "low" };
-  if (languageId === "json" || languageId === "yaml" || languageId === "python") {
-    return { confidence: 0.95, band: "high" };
-  }
+  if (HIGH_UNTIL_CORPUS.has(languageId)) return { confidence: 0.95, band: "high" };
   return { confidence: 0.99, band: "certain" };
+}
+
+function structuralEvidence(languageId: string | null): { code: string; text: string } {
+  switch (languageId) {
+    case "json":
+      return {
+        code: "json-keys",
+        text: "Each side edited different object keys. Untouched text is copied from the base.",
+      };
+    case "yaml":
+      return {
+        code: "yaml-keys",
+        text: "Each side edited different mapping keys. Untouched text is copied from the base.",
+      };
+    case "python":
+      return {
+        code: "python-defs",
+        text: "Each side edited different functions or classes. Untouched text is copied from the base.",
+      };
+    case "go":
+      return {
+        code: "go-funcs",
+        text: "Each side edited different functions or methods. Untouched text is copied from the base.",
+      };
+    default:
+      return {
+        code: "disjoint-nodes",
+        text: "Each side edited different declarations. Untouched text is copied from the base.",
+      };
+  }
 }
 
 const NOT_RUN: Check[] = [
@@ -163,25 +193,7 @@ function structuralCandidates(file: ConflictFile, hunk: ConflictHunk): Candidate
                 code: "import-union",
                 text: "Import names from both sides are kept. Existing order is preserved because no project sort convention was read.",
               }
-            : file.languageId === "json"
-              ? {
-                  code: "json-keys",
-                  text: "Each side edited different object keys. Untouched text is copied from the base.",
-                }
-              : file.languageId === "yaml"
-                ? {
-                    code: "yaml-keys",
-                    text: "Each side edited different mapping keys. Untouched text is copied from the base.",
-                  }
-                : file.languageId === "python"
-                  ? {
-                      code: "python-defs",
-                      text: "Each side edited different functions or classes. Untouched text is copied from the base.",
-                    }
-                  : {
-                      code: "disjoint-nodes",
-                      text: "Each side edited different declarations. Untouched text is copied from the base.",
-                    },
+            : structuralEvidence(file.languageId),
         ),
       );
     }

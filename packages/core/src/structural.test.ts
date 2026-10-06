@@ -387,6 +387,86 @@ describe("structural strategies", () => {
     );
   });
 
+  it("merges Go functions that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "go",
+      "mod.go",
+      "package p\n\nfunc Alpha() int {\n\treturn 1\n}\n\nfunc Beta() int {\n\treturn 1\n}\n",
+      "package p\n\nfunc Alpha() int {\n\treturn 2\n}\n\nfunc Beta() int {\n\treturn 1\n}\n",
+      "package p\n\nfunc Alpha() int {\n\treturn 1\n}\n\nfunc Beta() int {\n\treturn 3\n}\n",
+    );
+    expect(chosen?.recommended).toBe("hunk:1:structural-3way");
+    expect(chosen?.candidates[0]).toMatchObject({
+      result:
+        "package p\n\nfunc Alpha() int {\n\treturn 2\n}\n\nfunc Beta() int {\n\treturn 3\n}\n",
+      band: "high",
+      confidence: 0.95,
+      hazardous: false,
+      evidence: [
+        {
+          code: "go-funcs",
+          text: "Each side edited different functions or methods. Untouched text is copied from the base.",
+        },
+      ],
+    });
+    expect(chosen?.autoApplyEligible).toBe(false);
+  });
+
+  it("keeps methods added on each side of the same Go type", () => {
+    const chosen = proposalForLanguage(
+      "go",
+      "mod.go",
+      "package p\n\nfunc (b *Box) Left() int {\n\treturn 1\n}\n",
+      "package p\n\nfunc (b *Box) Left() int {\n\treturn 1\n}\n\nfunc (b *Box) Right() int {\n\treturn 2\n}\n",
+      "package p\n\nfunc (b *Box) Left() int {\n\treturn 1\n}\n\nfunc (b *Box) Top() int {\n\treturn 3\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "package p\n\nfunc (b *Box) Left() int {\n\treturn 1\n}\n\nfunc (b *Box) Right() int {\n\treturn 2\n}\n\nfunc (b *Box) Top() int {\n\treturn 3\n}\n",
+    );
+    expect(chosen?.candidates[0]?.band).toBe("high");
+  });
+
+  it("keeps methods with the same name on different Go types", () => {
+    const chosen = proposalForLanguage(
+      "go",
+      "mod.go",
+      "package p\n",
+      "package p\n\nfunc (b *Box) Left() int {\n\treturn 1\n}\n",
+      "package p\n\nfunc (b *Bag) Left() int {\n\treturn 2\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "package p\n\nfunc (b *Box) Left() int {\n\treturn 1\n}\n\nfunc (b *Bag) Left() int {\n\treturn 2\n}\n",
+    );
+  });
+
+  it("does not merge Go declarations by position", () => {
+    const chosen = proposalForLanguage(
+      "go",
+      "mod.go",
+      "package p\n\nvar x = 1\nvar y = 1\n",
+      "package p\n\nvar x = 2\nvar y = 1\n",
+      "package p\n\nvar x = 1\nvar y = 3\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge a Go function that both sides change", () => {
+    const chosen = proposalForLanguage(
+      "go",
+      "mod.go",
+      "package p\n\nfunc Alpha() int {\n\treturn 1\n}\n",
+      "package p\n\nfunc Alpha() int {\n\treturn 2\n}\n",
+      "package p\n\nfunc Alpha() int {\n\treturn 3\n}\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
   it("does not merge a Python function that both sides change", () => {
     const chosen = proposalForLanguage(
       "python",
@@ -417,6 +497,7 @@ describe("structural languages", () => {
     expect(STRUCTURAL_LANGUAGES).toContain("python");
     expect(STRUCTURAL_LANGUAGES).toContain("json");
     expect(STRUCTURAL_LANGUAGES).toContain("yaml");
+    expect(STRUCTURAL_LANGUAGES).toContain("go");
     for (const languageId of STRUCTURAL_LANGUAGES) {
       expect(isStructuralLanguage(languageId)).toBe(true);
     }
@@ -471,6 +552,28 @@ describe("breakage checks", () => {
     expect(quoted.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
     expect(hex.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
     expect(verifyParsed("data.yaml", duplicated, clean, clean).hazardous).toBe(true);
+  });
+
+  it("flags a repeated Go function or method name", () => {
+    const clean = parseSource("go", "package p\n\nfunc Alpha() int {\n\treturn 1\n}\n");
+    const duplicated = parseSource(
+      "go",
+      "package p\n\nfunc Alpha() int {\n\treturn 1\n}\n\nfunc Alpha() int {\n\treturn 2\n}\n",
+    );
+    const sameType = parseSource(
+      "go",
+      "package p\n\nfunc (b *Box) Left() int {\n\treturn 1\n}\n\nfunc (b *Box) Left() int {\n\treturn 2\n}\n",
+    );
+    const differentType = parseSource(
+      "go",
+      "package p\n\nfunc (b *Box) Left() int {\n\treturn 1\n}\n\nfunc (b *Bag) Left() int {\n\treturn 2\n}\n",
+    );
+    if (!clean || !duplicated || !sameType || !differentType) throw new Error("parser unavailable");
+    expect(duplicated.hasErrors).toBe(false);
+    expect(duplicated.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(sameType.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(differentType.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
+    expect(verifyParsed("mod.go", duplicated, clean, clean).hazardous).toBe(true);
   });
 
   it("flags a repeated Python function name", () => {
