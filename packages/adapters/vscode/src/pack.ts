@@ -51,7 +51,7 @@ const manifest = {
 await writeFile(join(stage, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 await cp(join(repoRoot, "README.md"), join(stage, "README.md"));
 await mkdir(join(stage, "assets"), { recursive: true });
-await cp(join(repoRoot, "assets", "logo.svg"), join(stage, "assets", "logo.svg"));
+await cp(join(repoRoot, "assets", "logo.png"), join(stage, "assets", "logo.png"));
 await writeFile(join(stage, ".vscodeignore"), ["**/*.md", "!README.md", "**/*.map", ""].join("\n"));
 const license = join(repoRoot, "LICENSE");
 try {
