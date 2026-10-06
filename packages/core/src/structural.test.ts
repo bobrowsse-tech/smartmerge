@@ -1053,6 +1053,195 @@ describe("structural strategies", () => {
     );
   });
 
+  it("merges C++ functions that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "cpp",
+      "file.cpp",
+      "int alpha() { return 1; }\nint beta() { return 1; }\n",
+      "int alpha() { return 2; }\nint beta() { return 1; }\n",
+      "int alpha() { return 1; }\nint beta() { return 3; }\n",
+    );
+    expect(chosen?.recommended).toBe("hunk:1:structural-3way");
+    expect(chosen?.candidates[0]).toMatchObject({
+      result: "int alpha() { return 2; }\nint beta() { return 3; }\n",
+      band: "high",
+      confidence: 0.95,
+      hazardous: false,
+      evidence: [
+        {
+          code: "cpp-types",
+          text: "Each side edited different types or functions. Untouched text is copied from the base.",
+        },
+      ],
+    });
+    expect(chosen?.autoApplyEligible).toBe(false);
+  });
+
+  it("merges C++ methods and keeps a shared access label", () => {
+    const base =
+      "class Box {\npublic:\n  int left() { return 1; }\n  int right() { return 1; }\n};\n";
+    const chosen = proposalForLanguage(
+      "cpp",
+      "file.cpp",
+      base,
+      "class Box {\npublic:\n  int left() { return 2; }\n  int right() { return 1; }\n};\n",
+      "class Box {\npublic:\n  int left() { return 1; }\n  int right() { return 3; }\n};\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "class Box {\npublic:\n  int left() { return 2; }\n  int right() { return 3; }\n};\n",
+    );
+  });
+
+  it("merges a C++ constructor and a method", () => {
+    const base = "class Box {\n  Box() { value = 1; }\n  int left() { return 1; }\n};\n";
+    const chosen = proposalForLanguage(
+      "cpp",
+      "file.cpp",
+      base,
+      "class Box {\n  Box() { value = 2; }\n  int left() { return 1; }\n};\n",
+      "class Box {\n  Box() { value = 1; }\n  int left() { return 3; }\n};\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "class Box {\n  Box() { value = 2; }\n  int left() { return 3; }\n};\n",
+    );
+  });
+
+  it("keeps the same C++ method name distinct on two classes", () => {
+    const base =
+      "class Box {\n  int left() { return 1; }\n};\nclass Bag {\n  int left() { return 1; }\n};\n";
+    const chosen = proposalForLanguage(
+      "cpp",
+      "file.cpp",
+      base,
+      "class Box {\n  int left() { return 2; }\n};\nclass Bag {\n  int left() { return 1; }\n};\n",
+      "class Box {\n  int left() { return 1; }\n};\nclass Bag {\n  int left() { return 3; }\n};\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "class Box {\n  int left() { return 2; }\n};\nclass Bag {\n  int left() { return 3; }\n};\n",
+    );
+  });
+
+  it("merges methods of a C++ class template", () => {
+    const base =
+      "template<typename T>\nclass Box {\n  int left() { return 1; }\n  int right() { return 1; }\n};\n";
+    const chosen = proposalForLanguage(
+      "cpp",
+      "file.cpp",
+      base,
+      "template<typename T>\nclass Box {\n  int left() { return 2; }\n  int right() { return 1; }\n};\n",
+      "template<typename T>\nclass Box {\n  int left() { return 1; }\n  int right() { return 3; }\n};\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "template<typename T>\nclass Box {\n  int left() { return 2; }\n  int right() { return 3; }\n};\n",
+    );
+  });
+
+  it("merges methods of a C++ struct", () => {
+    const base = "struct Box {\n  int left() { return 1; }\n  int right() { return 1; }\n};\n";
+    const chosen = proposalForLanguage(
+      "cpp",
+      "file.cpp",
+      base,
+      "struct Box {\n  int left() { return 2; }\n  int right() { return 1; }\n};\n",
+      "struct Box {\n  int left() { return 1; }\n  int right() { return 3; }\n};\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "struct Box {\n  int left() { return 2; }\n  int right() { return 3; }\n};\n",
+    );
+  });
+
+  it("merges C++ macros that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "cpp",
+      "file.cpp",
+      "#define MAX 1\n#define MIN 2\n",
+      "#define MAX 3\n#define MIN 2\n",
+      "#define MAX 1\n#define MIN 4\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe("#define MAX 3\n#define MIN 4\n");
+  });
+
+  it("merges C++ functions inside one namespace", () => {
+    const base = "namespace App {\nint alpha() { return 1; }\nint beta() { return 1; }\n}\n";
+    const chosen = proposalForLanguage(
+      "cpp",
+      "file.cpp",
+      base,
+      "namespace App {\nint alpha() { return 2; }\nint beta() { return 1; }\n}\n",
+      "namespace App {\nint alpha() { return 1; }\nint beta() { return 3; }\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "namespace App {\nint alpha() { return 2; }\nint beta() { return 3; }\n}\n",
+    );
+  });
+
+  it("merges C++ enumerators that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "cpp",
+      "file.cpp",
+      "enum class Hue { Red = 1, Blue = 1 };\n",
+      "enum class Hue { Red = 2, Blue = 1 };\n",
+      "enum class Hue { Red = 1, Blue = 3 };\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe("enum class Hue { Red = 2, Blue = 3 };\n");
+  });
+
+  it("merges C++ overloads that each side edits", () => {
+    const base = "class Box {\n  int left() { return 1; }\n  int left(int x) { return 1; }\n};\n";
+    const chosen = proposalForLanguage(
+      "cpp",
+      "file.cpp",
+      base,
+      "class Box {\n  int left() { return 2; }\n  int left(int x) { return 1; }\n};\n",
+      "class Box {\n  int left() { return 1; }\n  int left(int x) { return 3; }\n};\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "class Box {\n  int left() { return 2; }\n  int left(int x) { return 3; }\n};\n",
+    );
+  });
+
+  it("does not merge C++ fields by position", () => {
+    const chosen = proposalForLanguage(
+      "cpp",
+      "file.cpp",
+      "class Box { int x; int y; };\n",
+      "class Box { int a; int y; };\n",
+      "class Box { int x; int b; };\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge C++ statements by position", () => {
+    const chosen = proposalForLanguage(
+      "cpp",
+      "file.cpp",
+      "int alpha() {\n  int x = 1;\n  int y = 1;\n  return x;\n}\n",
+      "int alpha() {\n  int x = 2;\n  int y = 1;\n  return x;\n}\n",
+      "int alpha() {\n  int x = 1;\n  int y = 3;\n  return x;\n}\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge a C++ function that both sides change", () => {
+    const chosen = proposalForLanguage(
+      "cpp",
+      "file.cpp",
+      "int alpha() { return 1; }\n",
+      "int alpha() { return 2; }\n",
+      "int alpha() { return 3; }\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
   it("does not merge a Python function that both sides change", () => {
     const chosen = proposalForLanguage(
       "python",
@@ -1089,6 +1278,7 @@ describe("structural languages", () => {
     expect(STRUCTURAL_LANGUAGES).toContain("csharp");
     expect(STRUCTURAL_LANGUAGES).toContain("rust");
     expect(STRUCTURAL_LANGUAGES).toContain("c");
+    expect(STRUCTURAL_LANGUAGES).toContain("cpp");
     for (const languageId of STRUCTURAL_LANGUAGES) {
       expect(isStructuralLanguage(languageId)).toBe(true);
     }
@@ -1212,6 +1402,26 @@ describe("breakage checks", () => {
     expect(forwardStruct.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
     expect(called.symbolIssues.some((issue) => issue.code === "undeclared")).toBe(false);
     expect(verifyParsed("file.c", duplicated, clean, clean).hazardous).toBe(true);
+  });
+
+  it("flags a repeated C++ function and ignores an undeclared call", () => {
+    const clean = parseSource("cpp", "int alpha() { return 1; }\n");
+    const duplicated = parseSource("cpp", "int alpha() { return 1; }\nint alpha() { return 2; }\n");
+    const prototype = parseSource("cpp", "int alpha();\nint alpha() { return 1; }\n");
+    const overloads = parseSource(
+      "cpp",
+      "int left() { return 1; }\nint left(int x) { return x; }\nint left(const int& y) { return y; }\n",
+    );
+    const called = parseSource("cpp", "int alpha() { return missing(); }\n");
+    if (!clean || !duplicated || !prototype || !overloads || !called) {
+      throw new Error("parser unavailable");
+    }
+    expect(duplicated.hasErrors).toBe(false);
+    expect(duplicated.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(prototype.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
+    expect(overloads.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
+    expect(called.symbolIssues.some((issue) => issue.code === "undeclared")).toBe(false);
+    expect(verifyParsed("file.cpp", duplicated, clean, clean).hazardous).toBe(true);
   });
 
   it("flags a repeated Kotlin function and ignores an undeclared call", () => {

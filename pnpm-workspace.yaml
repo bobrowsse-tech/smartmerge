@@ -21,3 +21,4 @@ allowBuilds:
   tree-sitter-c-sharp: false
   tree-sitter-rust: false
   tree-sitter-c: false
+  tree-sitter-cpp: false
