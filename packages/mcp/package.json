@@ -22,7 +22,7 @@
     "prepublishOnly": "tsx ../../tools/assert-git-publish.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.31.0",
+    "@modelcontextprotocol/sdk": "1.32.0",
     "@smartmerge/core": "workspace:*",
     "@smartmerge/daemon": "workspace:*",
     "@smartmerge/git": "workspace:*",

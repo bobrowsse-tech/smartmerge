@@ -21,7 +21,7 @@ pnpm lint
 SMARTMERGE_FORBIDDEN_NAMES_FILE=private/forbidden-names.json pnpm check:public
 ```
 
-`private/` is gitignored and stays on the maintainer machine. CI reads the same list from the `SMARTMERGE_FORBIDDEN_NAMES` Actions secret.
+`private/` is gitignored and stays on the maintainer machine. CI reads the same list from the `SMARTMERGE_FORBIDDEN_NAMES` Actions secret. The dependency-update workflow cannot read Actions secrets, so it reads a secret of the same name from its own secret store.
 
 ## Publishing
 
