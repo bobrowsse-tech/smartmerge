@@ -1,6 +1,7 @@
 {
   "name": "@smartmerge/agent-kit",
   "version": "0.0.0",
+  "private": true,
   "description": "Agent instructions and an installable skill for resolving merge conflicts.",
   "license": "Apache-2.0",
   "type": "module",
