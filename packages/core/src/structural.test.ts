@@ -756,6 +756,163 @@ describe("structural strategies", () => {
     );
   });
 
+  it("merges Rust functions that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "rust",
+      "lib.rs",
+      "fn alpha() -> i32 { 1 }\nfn beta() -> i32 { 1 }\n",
+      "fn alpha() -> i32 { 2 }\nfn beta() -> i32 { 1 }\n",
+      "fn alpha() -> i32 { 1 }\nfn beta() -> i32 { 3 }\n",
+    );
+    expect(chosen?.recommended).toBe("hunk:1:structural-3way");
+    expect(chosen?.candidates[0]).toMatchObject({
+      result: "fn alpha() -> i32 { 2 }\nfn beta() -> i32 { 3 }\n",
+      band: "high",
+      confidence: 0.95,
+      hazardous: false,
+      evidence: [
+        {
+          code: "rust-items",
+          text: "Each side edited different items. Untouched text is copied from the base.",
+        },
+      ],
+    });
+    expect(chosen?.autoApplyEligible).toBe(false);
+  });
+
+  it("merges methods on a Rust impl when each side edits a different one", () => {
+    const chosen = proposalForLanguage(
+      "rust",
+      "lib.rs",
+      "impl Box {\n  fn left(&self) -> i32 { 1 }\n  fn right(&self) -> i32 { 1 }\n}\n",
+      "impl Box {\n  fn left(&self) -> i32 { 2 }\n  fn right(&self) -> i32 { 1 }\n}\n",
+      "impl Box {\n  fn left(&self) -> i32 { 1 }\n  fn right(&self) -> i32 { 3 }\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "impl Box {\n  fn left(&self) -> i32 { 2 }\n  fn right(&self) -> i32 { 3 }\n}\n",
+    );
+    expect(chosen?.candidates[0]?.band).toBe("high");
+  });
+
+  it("keeps a Rust trait method distinct from an inherent method", () => {
+    const chosen = proposalForLanguage(
+      "rust",
+      "lib.rs",
+      "impl Box {\n  fn left(&self) -> i32 { 1 }\n}\nimpl Display for Box {\n  fn fmt(&self) -> i32 { 1 }\n}\n",
+      "impl Box {\n  fn left(&self) -> i32 { 2 }\n}\nimpl Display for Box {\n  fn fmt(&self) -> i32 { 1 }\n}\n",
+      "impl Box {\n  fn left(&self) -> i32 { 1 }\n}\nimpl Display for Box {\n  fn fmt(&self) -> i32 { 3 }\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "impl Box {\n  fn left(&self) -> i32 { 2 }\n}\nimpl Display for Box {\n  fn fmt(&self) -> i32 { 3 }\n}\n",
+    );
+  });
+
+  it("keeps methods with the same name on different Rust types", () => {
+    const chosen = proposalForLanguage(
+      "rust",
+      "lib.rs",
+      "impl Box {\n  fn left(&self) -> i32 { 1 }\n}\nimpl Bag {\n  fn left(&self) -> i32 { 1 }\n}\n",
+      "impl Box {\n  fn left(&self) -> i32 { 2 }\n}\nimpl Bag {\n  fn left(&self) -> i32 { 1 }\n}\n",
+      "impl Box {\n  fn left(&self) -> i32 { 1 }\n}\nimpl Bag {\n  fn left(&self) -> i32 { 3 }\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "impl Box {\n  fn left(&self) -> i32 { 2 }\n}\nimpl Bag {\n  fn left(&self) -> i32 { 3 }\n}\n",
+    );
+  });
+
+  it("merges Rust enum variants that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "rust",
+      "lib.rs",
+      "enum Hue {\n  Red = 1,\n  Blue = 1,\n}\n",
+      "enum Hue {\n  Red = 2,\n  Blue = 1,\n}\n",
+      "enum Hue {\n  Red = 1,\n  Blue = 3,\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe("enum Hue {\n  Red = 2,\n  Blue = 3,\n}\n");
+  });
+
+  it("merges a Rust struct and a union when each side edits a different one", () => {
+    const chosen = proposalForLanguage(
+      "rust",
+      "lib.rs",
+      "struct Box {\n  x: i32,\n}\nunion Word {\n  x: u32,\n}\n",
+      "struct Box {\n  x: u32,\n}\nunion Word {\n  x: u32,\n}\n",
+      "struct Box {\n  x: i32,\n}\nunion Word {\n  x: i32,\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "struct Box {\n  x: u32,\n}\nunion Word {\n  x: i32,\n}\n",
+    );
+  });
+
+  it("merges Rust functions in different modules", () => {
+    const chosen = proposalForLanguage(
+      "rust",
+      "lib.rs",
+      "mod app {\n  fn alpha() -> i32 { 1 }\n}\nmod bag {\n  fn alpha() -> i32 { 1 }\n}\n",
+      "mod app {\n  fn alpha() -> i32 { 2 }\n}\nmod bag {\n  fn alpha() -> i32 { 1 }\n}\n",
+      "mod app {\n  fn alpha() -> i32 { 1 }\n}\nmod bag {\n  fn alpha() -> i32 { 3 }\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "mod app {\n  fn alpha() -> i32 { 2 }\n}\nmod bag {\n  fn alpha() -> i32 { 3 }\n}\n",
+    );
+  });
+
+  it("does not merge Rust fields by position", () => {
+    const chosen = proposalForLanguage(
+      "rust",
+      "lib.rs",
+      "struct Box {\n  x: i32,\n  y: i32,\n}\n",
+      "struct Box {\n  x: u32,\n  y: i32,\n}\n",
+      "struct Box {\n  x: i32,\n  y: u32,\n}\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge Rust let bindings by position", () => {
+    const chosen = proposalForLanguage(
+      "rust",
+      "lib.rs",
+      "fn alpha() {\n  let x = 1;\n  let y = 1;\n}\n",
+      "fn alpha() {\n  let x = 2;\n  let y = 1;\n}\n",
+      "fn alpha() {\n  let x = 1;\n  let y = 3;\n}\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge Rust use declarations by position", () => {
+    const chosen = proposalForLanguage(
+      "rust",
+      "lib.rs",
+      "use crate::left;\nuse crate::right;\n",
+      "use crate::alpha;\nuse crate::beta;\n",
+      "use other::left;\nuse crate::extra;\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge a Rust function that both sides change", () => {
+    const chosen = proposalForLanguage(
+      "rust",
+      "lib.rs",
+      "fn alpha() -> i32 { 1 }\n",
+      "fn alpha() -> i32 { 2 }\n",
+      "fn alpha() -> i32 { 3 }\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
   it("does not merge a Python function that both sides change", () => {
     const chosen = proposalForLanguage(
       "python",
@@ -790,6 +947,7 @@ describe("structural languages", () => {
     expect(STRUCTURAL_LANGUAGES).toContain("java");
     expect(STRUCTURAL_LANGUAGES).toContain("kotlin");
     expect(STRUCTURAL_LANGUAGES).toContain("csharp");
+    expect(STRUCTURAL_LANGUAGES).toContain("rust");
     for (const languageId of STRUCTURAL_LANGUAGES) {
       expect(isStructuralLanguage(languageId)).toBe(true);
     }
@@ -863,6 +1021,34 @@ describe("breakage checks", () => {
     expect(differentType.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
     expect(called.symbolIssues.some((issue) => issue.code === "undeclared")).toBe(false);
     expect(verifyParsed("Box.cs", duplicated, clean, clean).hazardous).toBe(true);
+  });
+
+  it("flags a repeated Rust function and ignores an undeclared call", () => {
+    const clean = parseSource("rust", "fn alpha() -> i32 { 1 }\n");
+    const duplicated = parseSource("rust", "fn alpha() -> i32 { 1 }\nfn alpha() -> i32 { 2 }\n");
+    const twoImpls = parseSource(
+      "rust",
+      "impl Box {\n  fn left(&self) -> i32 { 1 }\n}\nimpl Box {\n  fn right(&self) -> i32 { 1 }\n}\n",
+    );
+    const externs = parseSource(
+      "rust",
+      'extern "C" {\n  fn alpha();\n}\nextern "C" {\n  fn beta();\n}\n',
+    );
+    const modules = parseSource(
+      "rust",
+      "mod app {\n  fn alpha() -> i32 { 1 }\n}\nmod bag {\n  fn alpha() -> i32 { 1 }\n}\n",
+    );
+    const called = parseSource("rust", "fn alpha() {\n  missing();\n}\n");
+    if (!clean || !duplicated || !twoImpls || !externs || !modules || !called) {
+      throw new Error("parser unavailable");
+    }
+    expect(duplicated.hasErrors).toBe(false);
+    expect(duplicated.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(twoImpls.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
+    expect(externs.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
+    expect(modules.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
+    expect(called.symbolIssues.some((issue) => issue.code === "undeclared")).toBe(false);
+    expect(verifyParsed("lib.rs", duplicated, clean, clean).hazardous).toBe(true);
   });
 
   it("flags a repeated Kotlin function and ignores an undeclared call", () => {

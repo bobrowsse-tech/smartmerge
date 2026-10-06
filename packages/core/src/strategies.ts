@@ -22,9 +22,18 @@ const UNCHECKED_CAP = 0.8;
 
 /**
  * Fixed score for a structural result after syntax and symbol checks.
- * JSON, YAML, Python, Go, Java, Kotlin, and C# stay in the high band until a replay corpus exists, so a clean merge is not marked certain.
+ * JSON, YAML, Python, Go, Java, Kotlin, C#, and Rust stay in the high band until a replay corpus exists, so a clean merge is not marked certain.
  */
-const HIGH_UNTIL_CORPUS = new Set(["json", "yaml", "python", "go", "java", "kotlin", "csharp"]);
+const HIGH_UNTIL_CORPUS = new Set([
+  "json",
+  "yaml",
+  "python",
+  "go",
+  "java",
+  "kotlin",
+  "csharp",
+  "rust",
+]);
 
 export function structuralScore(
   languageId: string,
@@ -71,6 +80,11 @@ function structuralEvidence(languageId: string | null): { code: string; text: st
       return {
         code: "csharp-types",
         text: "Each side edited different types or methods. Untouched text is copied from the base.",
+      };
+    case "rust":
+      return {
+        code: "rust-items",
+        text: "Each side edited different items. Untouched text is copied from the base.",
       };
     default:
       return {

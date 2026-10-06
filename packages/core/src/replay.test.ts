@@ -263,6 +263,28 @@ describe("replayConflicts", () => {
     });
   });
 
+  it("keeps a Rust whole-file merge in the high band", async () => {
+    const report = await replayConflicts([
+      {
+        repository: "sample",
+        path: "lib.rs",
+        conflicted:
+          "prefix\n<<<<<<< current\n    return (\n=======\n    return [\n>>>>>>> incoming\nsuffix\n",
+        base: "fn alpha() -> i32 { 1 }\nfn beta() -> i32 { 1 }\n",
+        current: "fn alpha() -> i32 { 2 }\nfn beta() -> i32 { 1 }\n",
+        incoming: "fn alpha() -> i32 { 1 }\nfn beta() -> i32 { 3 }\n",
+        humanResult: "fn alpha() -> i32 { 2 }\nfn beta() -> i32 { 3 }\n",
+      },
+    ]);
+    expect(report.predicted).toBe(1);
+    expect(report.rows[0]).toEqual({
+      repository: "sample",
+      confidence: 0.95,
+      correct: true,
+      confidenceSource: "fixed-proposal",
+    });
+  });
+
   it("keeps a Kotlin whole-file merge in the high band", async () => {
     const report = await replayConflicts([
       {

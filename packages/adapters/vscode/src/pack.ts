@@ -104,6 +104,7 @@ async function stageDaemon(repo: string, destination: string): Promise<void> {
       "wasm/tree-sitter-kotlin.wasm",
     ],
     ["tree-sitter-c-sharp/tree-sitter-c_sharp.wasm", "wasm/tree-sitter-c_sharp.wasm"],
+    ["tree-sitter-rust/tree-sitter-rust.wasm", "wasm/tree-sitter-rust.wasm"],
     ["web-tree-sitter/web-tree-sitter.wasm", "web-tree-sitter.wasm"],
   ];
   for (const [specifier, name] of grammars) {
