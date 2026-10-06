@@ -18,3 +18,4 @@ allowBuilds:
   tree-sitter-go: false
   tree-sitter-java: false
   "@tree-sitter-grammars/tree-sitter-kotlin": false
+  tree-sitter-c-sharp: false

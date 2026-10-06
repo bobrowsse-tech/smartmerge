@@ -301,6 +301,9 @@ importers:
       eslint:
         specifier: ^10.11.0
         version: 10.11.0(supports-color@7.2.0)
+      tree-sitter-c-sharp:
+        specifier: 0.23.5
+        version: 0.23.5
       tree-sitter-go:
         specifier: 0.25.0
         version: 0.25.0
@@ -3937,6 +3940,14 @@ packages:
   toidentifier@1.0.1:
     resolution: {integrity: sha512-o5sSPKEkg/DIQNmH43V0/uerLrpzVedkUh8tGNvaeXpfpuwjKenlSox/2O/BTlZUtEe+JG7s5YhEz608PlAHRA==}
     engines: {node: '>=0.6'}
+
+  tree-sitter-c-sharp@0.23.5:
+    resolution: {integrity: sha512-xJGOeXPMmld0nES5+080N/06yY6LQi+KWGWV4LfZaZe6srJPtUtfhIbRSN7EZN6IaauzW28v6W4QHFwmeUW6HQ==}
+    peerDependencies:
+      tree-sitter: ^0.25.0
+    peerDependenciesMeta:
+      tree-sitter:
+        optional: true
 
   tree-sitter-go@0.25.0:
     resolution: {integrity: sha512-APBc/Dq3xz/e35Xpkhb1blu5UgW+2E3RyGWawZSCNcbGwa7jhSQPS8KsUupuzBla8PCo8+lz9W/JDJjmfRa2tw==}
@@ -7888,6 +7899,11 @@ snapshots:
       is-number: 7.0.0
 
   toidentifier@1.0.1: {}
+
+  tree-sitter-c-sharp@0.23.5:
+    dependencies:
+      node-addon-api: 8.9.2
+      node-gyp-build: 4.8.4
 
   tree-sitter-go@0.25.0:
     dependencies:
