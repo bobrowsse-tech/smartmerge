@@ -25,7 +25,7 @@ const operation: OperationContext = {
  * Apply the current proposal to each conflicted file and compare the exact text with the committed file.
  * A file is a row when every hunk has a recommendation, or when the three stored files merge as a whole.
  * Confidence is the lowest hunk score, or the fixed structural score for a whole-file merge.
- * A JSON, YAML, Python, Go, Java, Kotlin, C#, or Rust whole-file merge stays in the high band until a replay corpus exists.
+ * A JSON, YAML, Python, Go, Java, Kotlin, C#, Rust, or C whole-file merge stays in the high band until a replay corpus exists.
  * The merge-base file is passed through when it was stored, so a one-side change does not need diff3 markers.
  * A parser that fails to load leaves structural recommendations unavailable. Line strategies still run.
  */

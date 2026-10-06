@@ -123,8 +123,10 @@ C# classes, interfaces, structs, and enums merge by name. A namespace stays name
 
 Rust functions and methods merge by name. A method includes its impl, so an inherent method and a trait method with the same name stay distinct. Modules, structs, unions, traits, and enum variants merge by name. A function, variant, or other item that both sides change is left alone. Fields and let bindings are not merged by position. A clean Rust structural result stays in the high confidence band until a Rust replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
 
+C functions and prototypes merge by name. A prototype and a definition of the same name stay distinct. Structs, unions, enums, typedefs, and macros merge by name. Enumerators merge by name inside their enum. A function or other item that both sides change is left alone. Fields and statements are not merged by position. A function wrapped in a preprocessor condition is not merged by name. A clean C structural result stays in the high confidence band until a C replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
+
 Tier 2: Python functions and classes, Go functions and methods, Java types and methods, Kotlin types and functions, C# types and methods, and Rust items are covered above.
-Tier 3: C/C++, PHP, Ruby, Swift, SQL, TOML, XML.
+Tier 3: C functions, types, and macros are covered above. C++, PHP, Ruby, Swift, SQL, TOML, and XML remain.
 Unsupported: line-based strategies only, confidence caps apply.
 
 ## Failure handling

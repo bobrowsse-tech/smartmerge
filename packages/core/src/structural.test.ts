@@ -913,6 +913,146 @@ describe("structural strategies", () => {
     );
   });
 
+  it("merges C functions that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "c",
+      "file.c",
+      "int alpha(void) { return 1; }\nint beta(void) { return 1; }\n",
+      "int alpha(void) { return 2; }\nint beta(void) { return 1; }\n",
+      "int alpha(void) { return 1; }\nint beta(void) { return 3; }\n",
+    );
+    expect(chosen?.recommended).toBe("hunk:1:structural-3way");
+    expect(chosen?.candidates[0]).toMatchObject({
+      result: "int alpha(void) { return 2; }\nint beta(void) { return 3; }\n",
+      band: "high",
+      confidence: 0.95,
+      hazardous: false,
+      evidence: [
+        {
+          code: "c-items",
+          text: "Each side edited different functions, types, or macros. Untouched text is copied from the base.",
+        },
+      ],
+    });
+    expect(chosen?.autoApplyEligible).toBe(false);
+  });
+
+  it("merges a C function that returns a pointer", () => {
+    const chosen = proposalForLanguage(
+      "c",
+      "file.c",
+      "int *alpha(void) { return 0; }\nint *beta(void) { return 0; }\n",
+      "int *alpha(void) { return 1; }\nint *beta(void) { return 0; }\n",
+      "int *alpha(void) { return 0; }\nint *beta(void) { return 1; }\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "int *alpha(void) { return 1; }\nint *beta(void) { return 1; }\n",
+    );
+  });
+
+  it("merges C prototypes that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "c",
+      "file.h",
+      "void left(void);\nvoid right(void);\n",
+      "void left(int x);\nvoid right(void);\n",
+      "void left(void);\nvoid right(int y);\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe("void left(int x);\nvoid right(int y);\n");
+  });
+
+  it("merges a C struct and an enum when each side edits a different one", () => {
+    const chosen = proposalForLanguage(
+      "c",
+      "file.c",
+      "struct Box { int x; };\nenum Hue { Red = 1 };\n",
+      "struct Box { int y; };\nenum Hue { Red = 1 };\n",
+      "struct Box { int x; };\nenum Hue { Red = 2 };\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe("struct Box { int y; };\nenum Hue { Red = 2 };\n");
+  });
+
+  it("merges C enumerators that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "c",
+      "file.c",
+      "enum Hue { Red = 1, Blue = 1 };\n",
+      "enum Hue { Red = 2, Blue = 1 };\n",
+      "enum Hue { Red = 1, Blue = 3 };\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe("enum Hue { Red = 2, Blue = 3 };\n");
+  });
+
+  it("merges C macros that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "c",
+      "file.c",
+      "#define MAX 1\n#define MIN 2\n",
+      "#define MAX 3\n#define MIN 2\n",
+      "#define MAX 1\n#define MIN 4\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe("#define MAX 3\n#define MIN 4\n");
+  });
+
+  it("does not merge C fields by position", () => {
+    const chosen = proposalForLanguage(
+      "c",
+      "file.c",
+      "struct Box { int x; int y; };\n",
+      "struct Box { int a; int y; };\n",
+      "struct Box { int x; int b; };\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge C statements by position", () => {
+    const chosen = proposalForLanguage(
+      "c",
+      "file.c",
+      "int alpha(void) {\n  int x = 1;\n  int y = 1;\n  return x;\n}\n",
+      "int alpha(void) {\n  int x = 2;\n  int y = 1;\n  return x;\n}\n",
+      "int alpha(void) {\n  int x = 1;\n  int y = 3;\n  return x;\n}\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge C includes by position", () => {
+    const chosen = proposalForLanguage(
+      "c",
+      "file.c",
+      '#include "left.h"\n#include "right.h"\n',
+      '#include "alpha.h"\n#include "beta.h"\n',
+      '#include "other.h"\n#include "extra.h"\n',
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "rename-aware")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge a C function that both sides change", () => {
+    const chosen = proposalForLanguage(
+      "c",
+      "file.c",
+      "int alpha(void) { return 1; }\n",
+      "int alpha(void) { return 2; }\n",
+      "int alpha(void) { return 3; }\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
   it("does not merge a Python function that both sides change", () => {
     const chosen = proposalForLanguage(
       "python",
@@ -948,6 +1088,7 @@ describe("structural languages", () => {
     expect(STRUCTURAL_LANGUAGES).toContain("kotlin");
     expect(STRUCTURAL_LANGUAGES).toContain("csharp");
     expect(STRUCTURAL_LANGUAGES).toContain("rust");
+    expect(STRUCTURAL_LANGUAGES).toContain("c");
     for (const languageId of STRUCTURAL_LANGUAGES) {
       expect(isStructuralLanguage(languageId)).toBe(true);
     }
@@ -1049,6 +1190,28 @@ describe("breakage checks", () => {
     expect(modules.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
     expect(called.symbolIssues.some((issue) => issue.code === "undeclared")).toBe(false);
     expect(verifyParsed("lib.rs", duplicated, clean, clean).hazardous).toBe(true);
+  });
+
+  it("flags a repeated C function and ignores an undeclared call", () => {
+    const clean = parseSource("c", "int alpha(void) { return 1; }\n");
+    const duplicated = parseSource(
+      "c",
+      "int alpha(void) { return 1; }\nint alpha(void) { return 2; }\n",
+    );
+    const prototype = parseSource("c", "int alpha(void);\nint alpha(void) { return 1; }\n");
+    const repeatedPrototype = parseSource("c", "void alpha(void);\nvoid alpha(void);\n");
+    const forwardStruct = parseSource("c", "struct Box;\nstruct Box { int x; };\n");
+    const called = parseSource("c", "int alpha(void) { return missing(); }\n");
+    if (!clean || !duplicated || !prototype || !repeatedPrototype || !forwardStruct || !called) {
+      throw new Error("parser unavailable");
+    }
+    expect(duplicated.hasErrors).toBe(false);
+    expect(duplicated.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(prototype.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
+    expect(repeatedPrototype.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
+    expect(forwardStruct.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
+    expect(called.symbolIssues.some((issue) => issue.code === "undeclared")).toBe(false);
+    expect(verifyParsed("file.c", duplicated, clean, clean).hazardous).toBe(true);
   });
 
   it("flags a repeated Kotlin function and ignores an undeclared call", () => {
