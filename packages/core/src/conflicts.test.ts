@@ -69,6 +69,21 @@ describe("buildConflict", () => {
   });
 });
 
+describe("language ids", () => {
+  it("maps C++ extensions and leaves a C header as C", () => {
+    const source = {
+      text: "<<<<<<< HEAD\nalpha\n=======\nbeta\n>>>>>>> incoming\n",
+      binary: false,
+      missing: false,
+    };
+    for (const path of ["file.cpp", "file.cc", "file.cxx", "file.hpp", "file.hh", "file.hxx"]) {
+      expect(toConflictFile({ ...source, path }, operation).languageId).toBe("cpp");
+    }
+    expect(toConflictFile({ ...source, path: "file.h" }, operation).languageId).toBe("c");
+    expect(toConflictFile({ ...source, path: "file.c" }, operation).languageId).toBe("c");
+  });
+});
+
 describe("stubProposals", () => {
   it("offers both sides and recommends neither", () => {
     const file = toConflictFile(

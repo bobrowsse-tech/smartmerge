@@ -36,7 +36,7 @@ export interface ConcreteNode {
   type: string;
   /**
    * When false, an unstable node is not aligned by position.
-   * Python, Go, Java, Kotlin, C#, Rust, and C statements use this so two assignments are not merged just because they line up.
+   * Python, Go, Java, Kotlin, C#, Rust, C, and C++ statements use this so two assignments are not merged just because they line up.
    */
   positional: boolean;
   body: string;
@@ -78,6 +78,7 @@ export const STRUCTURAL_LANGUAGES = [
   "csharp",
   "rust",
   "c",
+  "cpp",
 ] as const;
 
 const SUPPORTED = new Set<string>(STRUCTURAL_LANGUAGES);
@@ -207,6 +208,9 @@ async function loadParsers(): Promise<void> {
     grammar("tree-sitter-rust/tree-sitter-rust.wasm", "tree-sitter-rust.wasm"),
   );
   const c = await Language.load(grammar("tree-sitter-c/tree-sitter-c.wasm", "tree-sitter-c.wasm"));
+  const cpp = await Language.load(
+    grammar("tree-sitter-cpp/tree-sitter-cpp.wasm", "tree-sitter-cpp.wasm"),
+  );
   languages = new Map<string, Language>([
     ["typescript", typescript],
     ["typescriptreact", tsx],
@@ -221,6 +225,7 @@ async function loadParsers(): Promise<void> {
     ["csharp", csharp],
     ["rust", rust],
     ["c", c],
+    ["cpp", cpp],
   ]);
 }
 
@@ -275,7 +280,7 @@ function toNode(languageId: string, source: string, node: SyntaxNode, slice: str
   const declared = node.type === "export_statement" ? (innerDeclaration(node) ?? node) : node;
   const key = keyFor(languageId, declared);
   const body = source.slice(node.startIndex, node.endIndex);
-  const inner = containerRange(declared);
+  const inner = containerRange(languageId, declared);
   if (!inner) {
     return {
       key: key.key,
@@ -354,6 +359,11 @@ function keyFor(languageId: string, node: SyntaxNode): { key: string; stable: bo
     if (cKey !== null) return { key: cKey, stable: true };
     return { key: node.type, stable: false };
   }
+  if (languageId === "cpp") {
+    const cppKey = cppDefinitionKey(node);
+    if (cppKey !== null) return { key: cppKey, stable: true };
+    return { key: node.type, stable: false };
+  }
   const defined = pythonDefinition(node);
   if (defined) {
     const definitionName = defined.childForFieldName("name");
@@ -413,8 +423,13 @@ function objectInterior(
 }
 
 function containerRange(
+  languageId: string,
   node: SyntaxNode,
 ): { parent: SyntaxNode; start: number; end: number } | null {
+  if (languageId === "cpp") {
+    const cppBody = cppItemBody(node);
+    if (cppBody) return cppBody;
+  }
   const cBody = cItemBody(node);
   if (cBody) return cBody;
   const rustBody = rustItemBody(node);
@@ -609,7 +624,8 @@ function statementPositional(languageId: string, stable: boolean): boolean {
     languageId !== "kotlin" &&
     languageId !== "csharp" &&
     languageId !== "rust" &&
-    languageId !== "c"
+    languageId !== "c" &&
+    languageId !== "cpp"
   );
 }
 
@@ -1167,6 +1183,250 @@ function collectCSymbols(root: SyntaxNode): ParseIssue[] {
   return issues;
 }
 
+/** Item wrapped by a template. The template itself has no name. */
+function cppInnerItem(node: SyntaxNode): SyntaxNode | null {
+  if (node.type !== "template_declaration") return null;
+  return (
+    node.namedChildren.find(
+      (child) =>
+        child.type === "class_specifier" ||
+        child.type === "struct_specifier" ||
+        child.type === "function_definition" ||
+        child.type === "alias_declaration",
+    ) ?? null
+  );
+}
+
+/** Function name when the declarator is a function, not a function-pointer variable. */
+function cppFunctionName(declarator: SyntaxNode | null): string | null {
+  let current = declarator;
+  while (current) {
+    if (
+      current.type === "pointer_declarator" ||
+      current.type === "reference_declarator" ||
+      current.type === "init_declarator" ||
+      current.type === "array_declarator"
+    ) {
+      current = current.childForFieldName("declarator");
+      continue;
+    }
+    if (current.type !== "function_declarator") return null;
+    const inner = current.childForFieldName("declarator");
+    if (!inner || inner.type === "parenthesized_declarator") return null;
+    if (
+      inner.type === "identifier" ||
+      inner.type === "field_identifier" ||
+      inner.type === "destructor_name" ||
+      inner.type === "operator_name"
+    ) {
+      return inner.text;
+    }
+    return null;
+  }
+  return null;
+}
+
+function cppFunctionDeclarator(declarator: SyntaxNode | null): SyntaxNode | null {
+  let current = declarator;
+  while (current) {
+    if (current.type === "function_declarator") return current;
+    if (
+      current.type === "pointer_declarator" ||
+      current.type === "reference_declarator" ||
+      current.type === "init_declarator" ||
+      current.type === "array_declarator"
+    ) {
+      current = current.childForFieldName("declarator");
+      continue;
+    }
+    return null;
+  }
+  return null;
+}
+
+/** Parameter name token, so the signature can keep the type and drop the name. */
+function cppParameterName(declarator: SyntaxNode | null): SyntaxNode | null {
+  let current = declarator;
+  while (current) {
+    if (current.type === "identifier" || current.type === "field_identifier") return current;
+    const next = current.childForFieldName("declarator") ?? current.namedChildren[0] ?? null;
+    if (!next || next === current) return null;
+    current = next;
+  }
+  return null;
+}
+
+/**
+ * Parameter type spelling with the name removed.
+ * The type field alone drops const and references, so `int` and `const int&` would collide.
+ */
+function cppParameterType(parameter: SyntaxNode): string {
+  const name = cppParameterName(parameter.childForFieldName("declarator"));
+  if (!name) return parameter.text.replace(/\s+/g, "");
+  const start = name.startIndex - parameter.startIndex;
+  const end = name.endIndex - parameter.startIndex;
+  if (start < 0 || end > parameter.text.length) return parameter.text.replace(/\s+/g, "");
+  return (parameter.text.slice(0, start) + parameter.text.slice(end)).replace(/\s+/g, "");
+}
+
+function cppSignature(declarator: SyntaxNode | null): string {
+  const list = cppFunctionDeclarator(declarator)?.childForFieldName("parameters");
+  if (!list) return "()";
+  const types: string[] = [];
+  for (const child of list.namedChildren) {
+    if (child.type !== "parameter_declaration") continue;
+    types.push(cppParameterType(child));
+  }
+  return `(${types.join(",")})`;
+}
+
+function cppEnclosingName(node: SyntaxNode): string {
+  const parts: string[] = [];
+  let current: SyntaxNode | null = node.parent;
+  while (current) {
+    if (
+      current.type === "namespace_definition" ||
+      current.type === "class_specifier" ||
+      current.type === "struct_specifier" ||
+      current.type === "enum_specifier"
+    ) {
+      const name = current.childForFieldName("name")?.text ?? "";
+      if (name.length > 0) parts.unshift(name);
+    }
+    current = current.parent;
+  }
+  return parts.join(".");
+}
+
+function cppQualified(node: SyntaxNode, name: string): string {
+  const owner = cppEnclosingName(node);
+  return owner.length > 0 ? `${owner}.${name}` : name;
+}
+
+function cppInnermostType(node: SyntaxNode): string {
+  let current: SyntaxNode | null = node.parent;
+  while (current) {
+    if (current.type === "class_specifier" || current.type === "struct_specifier") {
+      return current.childForFieldName("name")?.text ?? "";
+    }
+    current = current.parent;
+  }
+  return "";
+}
+
+function cppFunctionKey(node: SyntaxNode, prototype: boolean): string | null {
+  const declarator = node.childForFieldName("declarator");
+  const name = cppFunctionName(declarator);
+  if (name === null) return null;
+  const signature = cppSignature(declarator);
+  const qualified = cppQualified(node, name);
+  if (prototype) return `proto:${qualified}${signature}`;
+  if (name.startsWith("~")) return `destructor:${qualified}${signature}`;
+  const owner = cppInnermostType(node);
+  if (owner.length > 0 && name === owner) return `constructor:${qualified}${signature}`;
+  return `fn:${qualified}${signature}`;
+}
+
+function cppOpenedBody(
+  node: SyntaxNode,
+  bodyType: string,
+): { parent: SyntaxNode; start: number; end: number } | null {
+  const name = node.childForFieldName("name")?.text ?? "";
+  if (name.length === 0) return null;
+  const body = node.childForFieldName("body");
+  if (!body || body.type !== bodyType || body.endIndex - body.startIndex < 2) return null;
+  return { parent: body, start: body.startIndex + 1, end: body.endIndex - 1 };
+}
+
+function cppItemBody(node: SyntaxNode): { parent: SyntaxNode; start: number; end: number } | null {
+  const target = node.type === "template_declaration" ? cppInnerItem(node) : node;
+  if (!target) return null;
+  if (target.type === "class_specifier" || target.type === "struct_specifier") {
+    return cppOpenedBody(target, "field_declaration_list");
+  }
+  if (target.type === "namespace_definition") return cppOpenedBody(target, "declaration_list");
+  if (target.type === "enum_specifier") return cppOpenedBody(target, "enumerator_list");
+  return null;
+}
+
+/** Stable key for a C++ type, function, enumerator, or macro. Fields and statements stay unnamed. */
+function cppDefinitionKey(node: SyntaxNode): string | null {
+  if (node.type === "template_declaration") {
+    const inner = cppInnerItem(node);
+    return inner ? cppDefinitionKey(inner) : null;
+  }
+  if (node.type === "function_definition") return cppFunctionKey(node, false);
+  if (node.type === "declaration" || node.type === "field_declaration") {
+    return cppFunctionKey(node, true);
+  }
+  if (node.type === "class_specifier" || node.type === "struct_specifier") {
+    const name = node.childForFieldName("name")?.text ?? "";
+    if (name.length === 0) return null;
+    const kind = node.type === "class_specifier" ? "class" : "struct";
+    return `${kind}:${cppQualified(node, name)}`;
+  }
+  if (node.type === "namespace_definition") {
+    const name = node.childForFieldName("name")?.text ?? "";
+    return name.length > 0 ? `namespace:${cppQualified(node, name)}` : null;
+  }
+  if (node.type === "enum_specifier") {
+    const name = node.childForFieldName("name")?.text ?? "";
+    return name.length > 0 ? `enum:${cppQualified(node, name)}` : null;
+  }
+  if (node.type === "enumerator") {
+    const name = node.childForFieldName("name")?.text ?? "";
+    return name.length > 0 ? `enumerator:${cppQualified(node, name)}` : null;
+  }
+  if (node.type === "alias_declaration") {
+    const name = node.childForFieldName("name")?.text ?? "";
+    return name.length > 0 ? `alias:${cppQualified(node, name)}` : null;
+  }
+  if (node.type === "preproc_def" || node.type === "preproc_function_def") {
+    const name = node.childForFieldName("name")?.text ?? "";
+    return name.length > 0 ? `macro:${name}` : null;
+  }
+  return null;
+}
+
+function collectCppSymbols(root: SyntaxNode): ParseIssue[] {
+  const issues: ParseIssue[] = [];
+  const seen = new Set<string>();
+  const visit = (node: SyntaxNode): void => {
+    const key = cppDefinitionKey(node);
+    if (key !== null) {
+      const repeatedDefinition =
+        key.startsWith("fn:") || key.startsWith("constructor:") || key.startsWith("destructor:");
+      if (repeatedDefinition && seen.has(key)) {
+        const label = key.slice(key.indexOf(":") + 1);
+        issues.push({
+          line: node.startPosition.row + 1,
+          message: `Duplicate declaration ${label}`,
+          code: "duplicate",
+        });
+      }
+      if (repeatedDefinition) seen.add(key);
+      if (node.type === "function_definition" || node.type === "declaration") return;
+      if (node.type === "template_declaration") {
+        const inner = cppInnerItem(node);
+        const body =
+          inner &&
+          (inner.type === "class_specifier" ||
+            inner.type === "struct_specifier" ||
+            inner.type === "enum_specifier")
+            ? inner.childForFieldName("body")
+            : null;
+        if (body) {
+          for (const child of body.namedChildren) visit(child);
+        }
+        return;
+      }
+    }
+    for (const child of node.namedChildren) visit(child);
+  };
+  visit(root);
+  return issues;
+}
+
 function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "python") return collectPythonSymbols(root);
   if (languageId === "go") return collectGoSymbols(root);
@@ -1175,6 +1435,7 @@ function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "csharp") return collectCsharpSymbols(root);
   if (languageId === "rust") return collectRustSymbols(root);
   if (languageId === "c") return collectCSymbols(root);
+  if (languageId === "cpp") return collectCppSymbols(root);
   const issues: ParseIssue[] = [];
   const scopes: Array<Map<string, Binding>> = [new Map<string, Binding>()];
 

@@ -281,6 +281,13 @@ function languageIdFor(path: string): string | null {
     case "c":
     case "h":
       return "c";
+    case "cpp":
+    case "cc":
+    case "cxx":
+    case "hpp":
+    case "hh":
+    case "hxx":
+      return "cpp";
     case "java":
       return "java";
     case "kt":
