@@ -301,6 +301,9 @@ importers:
       '@binclusive/tree-sitter-swift-wasm':
         specifier: 0.1.0
         version: 0.1.0
+      '@cursorless/tree-sitter-wasms':
+        specifier: 0.10.0
+        version: 0.10.0
       '@l1xnan/tree-sitter-sql':
         specifier: 0.4.7
         version: 0.4.7(tree-sitter@0.25.1)
@@ -676,6 +679,9 @@ packages:
   '@clack/prompts@1.8.1':
     resolution: {integrity: sha512-dlT1m5e/0yUL0kRNcQn7yGLVThkgbB0Ga/1AmfDDC/8ik6AIiSf2QLQO2zPYvefsHP0aFgxO93cVLCCfDp7kzQ==}
     engines: {node: '>= 20.12.0'}
+
+  '@cursorless/tree-sitter-wasms@0.10.0':
+    resolution: {integrity: sha512-e/7mcvp5zDTe9dUUiSKkwacP/oyHRFyn6uGA7Qqx+g87Vb9sd3WNBMaxO9cL4TgcUyPRS7uHoEZn5cWOWGQJYw==}
 
   '@emnapi/core@1.11.0':
     resolution: {integrity: sha512-l9Oo58x0HOP5znGzVhYW9U3e5wVuA4LAZU2AGezTmkhO1CgQRFDhDg4nneHsu/t3WniXg9QrG2nIXL/ZS8ln8Q==}
@@ -4773,6 +4779,8 @@ snapshots:
       fast-string-width: 3.0.2
       fast-wrap-ansi: 0.2.2
       sisteransi: 1.0.5
+
+  '@cursorless/tree-sitter-wasms@0.10.0': {}
 
   '@emnapi/core@1.11.0':
     dependencies:

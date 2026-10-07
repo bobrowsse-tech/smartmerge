@@ -298,6 +298,8 @@ function languageIdFor(path: string): string | null {
       return "sql";
     case "toml":
       return "toml";
+    case "xml":
+      return "xml";
     case "java":
       return "java";
     case "kt":
