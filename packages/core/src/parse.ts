@@ -36,7 +36,7 @@ export interface ConcreteNode {
   type: string;
   /**
    * When false, an unstable node is not aligned by position.
-   * Python, Go, Java, Kotlin, C#, Rust, C, C++, PHP, and Ruby statements use this so two assignments are not merged just because they line up.
+   * Python, Go, Java, Kotlin, C#, Rust, C, C++, PHP, Ruby, and Swift statements use this so two assignments are not merged just because they line up.
    */
   positional: boolean;
   body: string;
@@ -81,6 +81,7 @@ export const STRUCTURAL_LANGUAGES = [
   "cpp",
   "php",
   "ruby",
+  "swift",
 ] as const;
 
 const SUPPORTED = new Set<string>(STRUCTURAL_LANGUAGES);
@@ -219,6 +220,9 @@ async function loadParsers(): Promise<void> {
   const ruby = await Language.load(
     grammar("tree-sitter-ruby/tree-sitter-ruby.wasm", "tree-sitter-ruby.wasm"),
   );
+  const swift = await Language.load(
+    grammar("@binclusive/tree-sitter-swift-wasm/tree-sitter-swift.wasm", "tree-sitter-swift.wasm"),
+  );
   languages = new Map<string, Language>([
     ["typescript", typescript],
     ["typescriptreact", tsx],
@@ -236,6 +240,7 @@ async function loadParsers(): Promise<void> {
     ["cpp", cpp],
     ["php", php],
     ["ruby", ruby],
+    ["swift", swift],
   ]);
 }
 
@@ -384,6 +389,11 @@ function keyFor(languageId: string, node: SyntaxNode): { key: string; stable: bo
     if (rubyKey !== null) return { key: rubyKey, stable: true };
     return { key: node.type, stable: false };
   }
+  if (languageId === "swift") {
+    const swiftKey = swiftDefinitionKey(node);
+    if (swiftKey !== null) return { key: swiftKey, stable: true };
+    return { key: node.type, stable: false };
+  }
   const defined = pythonDefinition(node);
   if (defined) {
     const definitionName = defined.childForFieldName("name");
@@ -458,6 +468,7 @@ function containerRange(
     const rubyBody = rubyItemBody(node);
     if (rubyBody) return rubyBody;
   }
+  if (languageId === "swift") return swiftItemBody(node);
   const cBody = cItemBody(node);
   if (cBody) return cBody;
   const rustBody = rustItemBody(node);
@@ -655,7 +666,8 @@ function statementPositional(languageId: string, stable: boolean): boolean {
     languageId !== "c" &&
     languageId !== "cpp" &&
     languageId !== "php" &&
-    languageId !== "ruby"
+    languageId !== "ruby" &&
+    languageId !== "swift"
   );
 }
 
@@ -1706,6 +1718,114 @@ function collectRubySymbols(root: SyntaxNode): ParseIssue[] {
   return issues;
 }
 
+function swiftFieldText(node: SyntaxNode, type: string): string {
+  const named = node.childForFieldName("name");
+  return named?.type === type && named.text.length > 0 ? named.text : "";
+}
+
+function swiftKind(node: SyntaxNode): string {
+  return node.childForFieldName("declaration_kind")?.text ?? "";
+}
+
+/** Enclosing class, struct, enum, and protocol names, outer first. */
+function swiftOwners(node: SyntaxNode): string[] {
+  const owners: string[] = [];
+  let current: SyntaxNode | null = node.parent;
+  while (current) {
+    if (current.type === "class_declaration") {
+      const kind = swiftKind(current);
+      if (kind === "class" || kind === "struct" || kind === "enum") {
+        const text = swiftFieldText(current, "type_identifier");
+        if (text.length > 0) owners.unshift(text);
+      }
+    } else if (current.type === "protocol_declaration") {
+      const text = swiftFieldText(current, "type_identifier");
+      if (text.length > 0) owners.unshift(text);
+    }
+    current = current.parent;
+  }
+  return owners;
+}
+
+function swiftQualified(node: SyntaxNode, name: string): string {
+  return [...swiftOwners(node), name].join(".");
+}
+
+function swiftOpenedBody(
+  node: SyntaxNode,
+  bodyType: string,
+): { parent: SyntaxNode; start: number; end: number } | null {
+  const body = node.childForFieldName("body");
+  if (!body || body.type !== bodyType || body.endIndex - body.startIndex < 2) return null;
+  return { parent: body, start: body.startIndex + 1, end: body.endIndex - 1 };
+}
+
+function swiftItemBody(
+  node: SyntaxNode,
+): { parent: SyntaxNode; start: number; end: number } | null {
+  if (node.type === "class_declaration") {
+    if (swiftFieldText(node, "type_identifier").length === 0) return null;
+    const kind = swiftKind(node);
+    if (kind === "class" || kind === "struct") return swiftOpenedBody(node, "class_body");
+    if (kind === "enum") return swiftOpenedBody(node, "enum_class_body");
+    return null;
+  }
+  if (node.type === "protocol_declaration") {
+    if (swiftFieldText(node, "type_identifier").length === 0) return null;
+    return swiftOpenedBody(node, "protocol_body");
+  }
+  return null;
+}
+
+/** Stable key for a Swift function, type, or enum case. Initializers and statements stay unnamed. */
+function swiftDefinitionKey(node: SyntaxNode): string | null {
+  if (node.type === "function_declaration" || node.type === "protocol_function_declaration") {
+    const name = swiftFieldText(node, "simple_identifier");
+    return name.length > 0 ? `function:${swiftQualified(node, name)}` : null;
+  }
+  if (node.type === "class_declaration") {
+    const kind = swiftKind(node);
+    if (kind !== "class" && kind !== "struct" && kind !== "enum") return null;
+    const name = swiftFieldText(node, "type_identifier");
+    return name.length > 0 ? `${kind}:${swiftQualified(node, name)}` : null;
+  }
+  if (node.type === "protocol_declaration") {
+    const name = swiftFieldText(node, "type_identifier");
+    return name.length > 0 ? `protocol:${swiftQualified(node, name)}` : null;
+  }
+  if (node.type === "enum_entry") {
+    const name = swiftFieldText(node, "simple_identifier");
+    return name.length > 0 ? `case:${swiftQualified(node, name)}` : null;
+  }
+  return null;
+}
+
+function collectSwiftSymbols(root: SyntaxNode): ParseIssue[] {
+  const issues: ParseIssue[] = [];
+  const seen = new Set<string>();
+  const visit = (node: SyntaxNode): void => {
+    const key = swiftDefinitionKey(node);
+    if (key !== null) {
+      const repeated = key.startsWith("function:");
+      if (repeated && seen.has(key)) {
+        const label = key.slice(key.indexOf(":") + 1);
+        issues.push({
+          line: node.startPosition.row + 1,
+          message: `Duplicate declaration ${label}`,
+          code: "duplicate",
+        });
+      }
+      if (repeated) seen.add(key);
+      if (node.type === "function_declaration" || node.type === "protocol_function_declaration") {
+        return;
+      }
+    }
+    for (const child of node.namedChildren) visit(child);
+  };
+  visit(root);
+  return issues;
+}
+
 function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "python") return collectPythonSymbols(root);
   if (languageId === "go") return collectGoSymbols(root);
@@ -1717,6 +1837,7 @@ function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "cpp") return collectCppSymbols(root);
   if (languageId === "php") return collectPhpSymbols(root);
   if (languageId === "ruby") return collectRubySymbols(root);
+  if (languageId === "swift") return collectSwiftSymbols(root);
   const issues: ParseIssue[] = [];
   const scopes: Array<Map<string, Binding>> = [new Map<string, Binding>()];
 

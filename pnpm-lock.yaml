@@ -298,6 +298,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@binclusive/tree-sitter-swift-wasm':
+        specifier: 0.1.0
+        version: 0.1.0
       '@smartmerge/protocol':
         specifier: workspace:*
         version: link:../protocol
@@ -588,6 +591,10 @@ packages:
   '@babel/types@7.29.8':
     resolution: {integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==}
     engines: {node: '>=6.9.0'}
+
+  '@binclusive/tree-sitter-swift-wasm@0.1.0':
+    resolution: {integrity: sha512-QZr3UahyLhPUZtBmcleKzx/TTWT4dcXv9Xb8OeGrubtqsu1aNbaBYrlzeiM4XZzmm/Q+YDQEnk7/rg15SGZU1A==}
+    engines: {node: '>=20'}
 
   '@cacheable/memory@2.2.0':
     resolution: {integrity: sha512-CTLKqLItRCEixEAewD3/j9DB3/o96gpTPD4eJ1v+DGOlxZRZncRQkGYqqnAGCscYd6RNeXfGeiuCphsPtqyIfQ==}
@@ -4610,6 +4617,8 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
+
+  '@binclusive/tree-sitter-swift-wasm@0.1.0': {}
 
   '@cacheable/memory@2.2.0':
     dependencies:

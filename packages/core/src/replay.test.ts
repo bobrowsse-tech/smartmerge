@@ -329,6 +329,28 @@ describe("replayConflicts", () => {
     });
   });
 
+  it("keeps a Swift whole-file merge in the high band", async () => {
+    const report = await replayConflicts([
+      {
+        repository: "sample",
+        path: "file.swift",
+        conflicted:
+          "prefix\n<<<<<<< current\n    return (\n=======\n    return [\n>>>>>>> incoming\nsuffix\n",
+        base: "func alpha() -> Int { return 1 }\nfunc beta() -> Int { return 1 }\n",
+        current: "func alpha() -> Int { return 2 }\nfunc beta() -> Int { return 1 }\n",
+        incoming: "func alpha() -> Int { return 1 }\nfunc beta() -> Int { return 3 }\n",
+        humanResult: "func alpha() -> Int { return 2 }\nfunc beta() -> Int { return 3 }\n",
+      },
+    ]);
+    expect(report.predicted).toBe(1);
+    expect(report.rows[0]).toEqual({
+      repository: "sample",
+      confidence: 0.95,
+      correct: true,
+      confidenceSource: "fixed-proposal",
+    });
+  });
+
   it("keeps a C++ whole-file merge in the high band", async () => {
     const report = await replayConflicts([
       {

@@ -1535,6 +1535,133 @@ describe("structural strategies", () => {
     );
   });
 
+  it("merges Swift functions that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "swift",
+      "file.swift",
+      "func alpha() -> Int { return 1 }\nfunc beta() -> Int { return 1 }\n",
+      "func alpha() -> Int { return 2 }\nfunc beta() -> Int { return 1 }\n",
+      "func alpha() -> Int { return 1 }\nfunc beta() -> Int { return 3 }\n",
+    );
+    expect(chosen?.recommended).toBe("hunk:1:structural-3way");
+    expect(chosen?.candidates[0]).toMatchObject({
+      result: "func alpha() -> Int { return 2 }\nfunc beta() -> Int { return 3 }\n",
+      band: "high",
+      confidence: 0.95,
+      hazardous: false,
+      evidence: [
+        {
+          code: "swift-defs",
+          text: "Each side edited different functions or types. Untouched text is copied from the base.",
+        },
+      ],
+    });
+    expect(chosen?.autoApplyEligible).toBe(false);
+  });
+
+  it("merges Swift methods in one class", () => {
+    const base =
+      "class Box {\n  func left() -> Int { return 1 }\n  func right() -> Int { return 1 }\n}\n";
+    const chosen = proposalForLanguage(
+      "swift",
+      "file.swift",
+      base,
+      "class Box {\n  func left() -> Int { return 2 }\n  func right() -> Int { return 1 }\n}\n",
+      "class Box {\n  func left() -> Int { return 1 }\n  func right() -> Int { return 3 }\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "class Box {\n  func left() -> Int { return 2 }\n  func right() -> Int { return 3 }\n}\n",
+    );
+  });
+
+  it("keeps the same Swift method name distinct on two types", () => {
+    const base =
+      "class Box {\n  func left() -> Int { return 1 }\n}\nclass Bag {\n  func left() -> Int { return 1 }\n}\n";
+    const chosen = proposalForLanguage(
+      "swift",
+      "file.swift",
+      base,
+      "class Box {\n  func left() -> Int { return 2 }\n}\nclass Bag {\n  func left() -> Int { return 1 }\n}\n",
+      "class Box {\n  func left() -> Int { return 1 }\n}\nclass Bag {\n  func left() -> Int { return 3 }\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "class Box {\n  func left() -> Int { return 2 }\n}\nclass Bag {\n  func left() -> Int { return 3 }\n}\n",
+    );
+  });
+
+  it("merges Swift methods in one struct", () => {
+    const base =
+      "struct Box {\n  func left() -> Int { return 1 }\n  func right() -> Int { return 1 }\n}\n";
+    const chosen = proposalForLanguage(
+      "swift",
+      "file.swift",
+      base,
+      "struct Box {\n  func left() -> Int { return 2 }\n  func right() -> Int { return 1 }\n}\n",
+      "struct Box {\n  func left() -> Int { return 1 }\n  func right() -> Int { return 3 }\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "struct Box {\n  func left() -> Int { return 2 }\n  func right() -> Int { return 3 }\n}\n",
+    );
+  });
+
+  it("merges Swift enum cases that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "swift",
+      "file.swift",
+      "enum Color {\n  case red(Int)\n  case blue(Int)\n}\n",
+      "enum Color {\n  case red(String)\n  case blue(Int)\n}\n",
+      "enum Color {\n  case red(Int)\n  case blue(String)\n}\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "enum Color {\n  case red(String)\n  case blue(String)\n}\n",
+    );
+  });
+
+  it("does not merge Swift assignments inside a function by position", () => {
+    const chosen = proposalForLanguage(
+      "swift",
+      "file.swift",
+      "func alpha() -> Int {\n  let x = 1\n  let y = 1\n  return x\n}\n",
+      "func alpha() -> Int {\n  let x = 2\n  let y = 1\n  return x\n}\n",
+      "func alpha() -> Int {\n  let x = 1\n  let y = 3\n  return x\n}\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge Swift import declarations by position", () => {
+    const chosen = proposalForLanguage(
+      "swift",
+      "file.swift",
+      "import Left\nimport Right\n",
+      "import Alpha\nimport Beta\n",
+      "import Other\nimport Extra\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "rename-aware")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge a Swift function that both sides change", () => {
+    const chosen = proposalForLanguage(
+      "swift",
+      "file.swift",
+      "func alpha() -> Int { return 1 }\n",
+      "func alpha() -> Int { return 2 }\n",
+      "func alpha() -> Int { return 3 }\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
   it("does not merge a Python function that both sides change", () => {
     const chosen = proposalForLanguage(
       "python",
@@ -1574,6 +1701,7 @@ describe("structural languages", () => {
     expect(STRUCTURAL_LANGUAGES).toContain("cpp");
     expect(STRUCTURAL_LANGUAGES).toContain("php");
     expect(STRUCTURAL_LANGUAGES).toContain("ruby");
+    expect(STRUCTURAL_LANGUAGES).toContain("swift");
     for (const languageId of STRUCTURAL_LANGUAGES) {
       expect(isStructuralLanguage(languageId)).toBe(true);
     }
@@ -1752,6 +1880,25 @@ describe("breakage checks", () => {
     expect(differentType.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
     expect(called.symbolIssues.some((issue) => issue.code === "undeclared")).toBe(false);
     expect(verifyParsed("file.rb", duplicated, clean, clean).hazardous).toBe(true);
+  });
+
+  it("flags a repeated Swift function and ignores an undeclared call", () => {
+    const clean = parseSource("swift", "func alpha() -> Int { return 1 }\n");
+    const duplicated = parseSource(
+      "swift",
+      "func alpha() -> Int { return 1 }\nfunc alpha() -> Int { return 2 }\n",
+    );
+    const differentType = parseSource(
+      "swift",
+      "class Box {\n  func left() -> Int { return 1 }\n}\nclass Bag {\n  func left() -> Int { return 2 }\n}\n",
+    );
+    const called = parseSource("swift", "func alpha() -> Int { return missing() }\n");
+    if (!clean || !duplicated || !differentType || !called) throw new Error("parser unavailable");
+    expect(duplicated.hasErrors).toBe(false);
+    expect(duplicated.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(differentType.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
+    expect(called.symbolIssues.some((issue) => issue.code === "undeclared")).toBe(false);
+    expect(verifyParsed("file.swift", duplicated, clean, clean).hazardous).toBe(true);
   });
 
   it("flags a repeated Kotlin function and ignores an undeclared call", () => {
