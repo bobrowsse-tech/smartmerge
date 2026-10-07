@@ -2115,6 +2115,108 @@ describe("structural strategies", () => {
     );
   });
 
+  it("merges Markdown sections that each side edits", () => {
+    const base = "# Alpha\n\n1\n\n# Beta\n\n1\n";
+    const chosen = proposalForLanguage(
+      "markdown",
+      "file.md",
+      base,
+      "# Alpha\n\n2\n\n# Beta\n\n1\n",
+      "# Alpha\n\n1\n\n# Beta\n\n3\n",
+    );
+    expect(chosen?.recommended).toBe("hunk:1:structural-3way");
+    expect(chosen?.candidates[0]).toMatchObject({
+      result: "# Alpha\n\n2\n\n# Beta\n\n3\n",
+      band: "high",
+      confidence: 0.95,
+      hazardous: false,
+      evidence: [
+        {
+          code: "markdown-sections",
+          text: "Each side edited different sections. Untouched text is copied from the base.",
+        },
+      ],
+    });
+    expect(chosen?.autoApplyEligible).toBe(false);
+  });
+
+  it("merges Markdown sections inside one parent without inserting a comma", () => {
+    const base = "# Parent\n\n## Alpha\n\n1\n\n## Beta\n\n1\n";
+    const chosen = proposalForLanguage(
+      "markdown",
+      "file.md",
+      base,
+      "# Parent\n\n## Alpha\n\n2\n\n## Beta\n\n1\n",
+      "# Parent\n\n## Alpha\n\n1\n\n## Beta\n\n3\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe("# Parent\n\n## Alpha\n\n2\n\n## Beta\n\n3\n");
+  });
+
+  it("does not merge a Markdown section that both sides change", () => {
+    const chosen = proposalForLanguage(
+      "markdown",
+      "file.md",
+      "# Alpha\n\n1\n",
+      "# Alpha\n\n2\n",
+      "# Alpha\n\n3\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+  });
+
+  it("does not merge Markdown paragraphs by position", () => {
+    const chosen = proposalForLanguage(
+      "markdown",
+      "file.md",
+      "# Alpha\n\none\n\ntwo\n",
+      "# Alpha\n\nONE\n\ntwo\n",
+      "# Alpha\n\none\n\nTWO\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge a Markdown list by item position", () => {
+    const chosen = proposalForLanguage(
+      "markdown",
+      "file.md",
+      "# Alpha\n\n- one\n- two\n",
+      "# Alpha\n\n- ONE\n- two\n",
+      "# Alpha\n\n- one\n- TWO\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not treat a setext heading as a Markdown section", () => {
+    const chosen = proposalForLanguage(
+      "markdown",
+      "file.md",
+      "Alpha\n=====\n\nleft\n\nBeta\n=====\n\nright\n",
+      "Alpha\n=====\n\nLEFT\n\nBeta\n=====\n\nright\n",
+      "Alpha\n=====\n\nleft\n\nBeta\n=====\n\nRIGHT\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("keeps a closing hash in a Markdown heading distinct from the plain heading", () => {
+    const base = "# Alpha\n\n1\n\n# Alpha ##\n\n1\n";
+    const chosen = proposalForLanguage(
+      "markdown",
+      "file.md",
+      base,
+      "# Alpha\n\n2\n\n# Alpha ##\n\n1\n",
+      "# Alpha\n\n1\n\n# Alpha ##\n\n3\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe("# Alpha\n\n2\n\n# Alpha ##\n\n3\n");
+  });
+
   it("does not merge a Python function that both sides change", () => {
     const chosen = proposalForLanguage(
       "python",
@@ -2158,6 +2260,7 @@ describe("structural languages", () => {
     expect(STRUCTURAL_LANGUAGES).toContain("sql");
     expect(STRUCTURAL_LANGUAGES).toContain("toml");
     expect(STRUCTURAL_LANGUAGES).toContain("xml");
+    expect(STRUCTURAL_LANGUAGES).toContain("markdown");
     for (const languageId of STRUCTURAL_LANGUAGES) {
       expect(isStructuralLanguage(languageId)).toBe(true);
     }
@@ -2423,6 +2526,22 @@ describe("breakage checks", () => {
     expect(nested.hasErrors).toBe(false);
     expect(nested.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
     expect(verifyParsed("file.xml", duplicated, clean, clean).hazardous).toBe(true);
+  });
+
+  it("flags a repeated Markdown heading", () => {
+    const clean = parseSource("markdown", "# Alpha\n\n1\n");
+    const duplicated = parseSource("markdown", "# Alpha\n\n1\n\n# Alpha\n\n2\n");
+    const nested = parseSource("markdown", "# Alpha\n\n## Alpha\n\n1\n");
+    const titled = parseSource("markdown", "# Alpha: beta\n\n1\n\n# Alpha: beta\n\n2\n");
+    if (!clean || !duplicated || !nested || !titled) throw new Error("parser unavailable");
+    expect(duplicated.hasErrors).toBe(false);
+    expect(duplicated.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(nested.hasErrors).toBe(false);
+    expect(nested.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
+    expect(
+      titled.symbolIssues.some((issue) => issue.message === "Duplicate declaration Alpha: beta"),
+    ).toBe(true);
+    expect(verifyParsed("file.md", duplicated, clean, clean).hazardous).toBe(true);
   });
 
   it("flags a repeated Kotlin function and ignores an undeclared call", () => {

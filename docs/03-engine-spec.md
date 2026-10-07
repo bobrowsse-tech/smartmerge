@@ -105,11 +105,13 @@ Every proposal carries `explanation`: strategy in plain words, evidence bullets 
 
 ## Language support plan
 
-Tier 1: TypeScript/JavaScript (incl. TSX/JSX), JSON/JSONC, YAML, Markdown.
+Tier 1: TypeScript/JavaScript (incl. TSX/JSX), JSON/JSONC, YAML, and Markdown. Markdown is covered below.
 
 JSON objects merge by key. A comma is inserted when two keys become neighbors, and a comma left behind by a deleted first key is dropped. Arrays stay order-sensitive, so a change on both sides is not combined. Escaped key spellings match after decoding. A clean JSON structural result stays in the high confidence band until a JSON replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
 
 YAML mappings merge by key the same way. Sequences stay order-sensitive. A plain key and a quoted spelling of the same text match, including a hex escape in a double-quoted key. An added key in a flow mapping stays before a trailing comment. A clean YAML structural result stays in the high confidence band until a YAML replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
+
+Markdown sections merge by the ATX heading text the parser stores. Extra spaces after the marker are not part of that text. A closing hash stays in the text. A nested heading stays inside its parent section. A paragraph, a list, a code block, a quote, a table, a thematic break, a link reference, and a setext heading stay in order and are not merged by position. A setext heading is not a section name. A section that both sides change is left alone. A clean Markdown structural result stays in the high confidence band until a Markdown replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
 
 Python functions and classes merge by name. Methods added on each side of the same class are kept. A function or class that both sides change is left alone. Assignments and other statements are not merged by position. A clean Python structural result stays in the high confidence band until a Python replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
 
