@@ -65,6 +65,7 @@ const grammars: ReadonlyArray<readonly [string, string]> = [
   ["@binclusive/tree-sitter-swift-wasm/tree-sitter-swift.wasm", "wasm/tree-sitter-swift.wasm"],
   ["@l1xnan/tree-sitter-sql/tree-sitter-sql.wasm", "wasm/tree-sitter-sql.wasm"],
   ["@tree-sitter-grammars/tree-sitter-toml/tree-sitter-toml.wasm", "wasm/tree-sitter-toml.wasm"],
+  ["@cursorless/tree-sitter-wasms/out/tree-sitter-xml.wasm", "wasm/tree-sitter-xml.wasm"],
   ["web-tree-sitter/web-tree-sitter.wasm", "web-tree-sitter.wasm"],
 ];
 for (const [specifier, name] of grammars) {

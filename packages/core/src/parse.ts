@@ -36,7 +36,7 @@ export interface ConcreteNode {
   type: string;
   /**
    * When false, an unstable node is not aligned by position.
-   * Python, Go, Java, Kotlin, C#, Rust, C, C++, PHP, Ruby, Swift, SQL, and TOML statements use this so two assignments are not merged just because they line up.
+   * Python, Go, Java, Kotlin, C#, Rust, C, C++, PHP, Ruby, Swift, SQL, TOML, and XML statements use this so two assignments are not merged just because they line up.
    */
   positional: boolean;
   /**
@@ -89,6 +89,7 @@ export const STRUCTURAL_LANGUAGES = [
   "swift",
   "sql",
   "toml",
+  "xml",
 ] as const;
 
 const SUPPORTED = new Set<string>(STRUCTURAL_LANGUAGES);
@@ -239,6 +240,9 @@ async function loadParsers(): Promise<void> {
       "tree-sitter-toml.wasm",
     ),
   );
+  const xml = await Language.load(
+    grammar("@cursorless/tree-sitter-wasms/out/tree-sitter-xml.wasm", "tree-sitter-xml.wasm"),
+  );
   languages = new Map<string, Language>([
     ["typescript", typescript],
     ["typescriptreact", tsx],
@@ -259,6 +263,7 @@ async function loadParsers(): Promise<void> {
     ["swift", swift],
     ["sql", sql],
     ["toml", toml],
+    ["xml", xml],
   ]);
 }
 
@@ -350,6 +355,11 @@ function keyFor(languageId: string, node: SyntaxNode): { key: string; stable: bo
   if (languageId === "toml") {
     const tomlKey = tomlDefinitionKey(node);
     if (tomlKey !== null) return { key: tomlKey, stable: true };
+    return { key: node.type, stable: false };
+  }
+  if (languageId === "xml") {
+    const xmlKey = xmlDefinitionKey(node);
+    if (xmlKey !== null) return { key: xmlKey, stable: true };
     return { key: node.type, stable: false };
   }
   if (node.type === "pair") {
@@ -487,6 +497,7 @@ function containerRange(
   node: SyntaxNode,
 ): { parent: SyntaxNode; start: number; end: number } | null {
   if (languageId === "toml") return tomlItemBody(node);
+  if (languageId === "xml") return xmlItemBody(node);
   if (languageId === "cpp") {
     const cppBody = cppItemBody(node);
     if (cppBody) return cppBody;
@@ -701,7 +712,8 @@ function statementPositional(languageId: string, stable: boolean): boolean {
     languageId !== "ruby" &&
     languageId !== "swift" &&
     languageId !== "sql" &&
-    languageId !== "toml"
+    languageId !== "toml" &&
+    languageId !== "xml"
   );
 }
 
@@ -2128,6 +2140,59 @@ function collectTomlSymbols(root: SyntaxNode): ParseIssue[] {
   return issues;
 }
 
+function xmlStartTag(element: SyntaxNode): SyntaxNode | null {
+  for (const child of element.namedChildren) {
+    if (child.type === "STag" || child.type === "EmptyElemTag") return child;
+  }
+  return null;
+}
+
+/** Stable key for an XML element. Text, comments, and tag attributes stay unnamed. */
+function xmlDefinitionKey(node: SyntaxNode): string | null {
+  if (node.type !== "element") return null;
+  const tag = xmlStartTag(node);
+  if (!tag) return null;
+  for (const child of tag.namedChildren) {
+    if (child.type !== "Name") continue;
+    return child.text.length > 0 ? `element:${child.text}` : null;
+  }
+  return null;
+}
+
+function xmlItemBody(node: SyntaxNode): { parent: SyntaxNode; start: number; end: number } | null {
+  if (node.type !== "element") return null;
+  for (const child of node.namedChildren) {
+    if (child.type === "content" && child.endIndex > child.startIndex) {
+      return { parent: child, start: child.startIndex, end: child.endIndex };
+    }
+  }
+  return null;
+}
+
+function collectXmlSymbols(root: SyntaxNode): ParseIssue[] {
+  const issues: ParseIssue[] = [];
+  const visit = (node: SyntaxNode): void => {
+    if (node.type === "content") {
+      const seen = new Set<string>();
+      for (const child of node.namedChildren) {
+        if (child.type !== "element") continue;
+        const key = xmlDefinitionKey(child);
+        if (key !== null && seen.has(key)) {
+          issues.push({
+            line: child.startPosition.row + 1,
+            message: `Duplicate declaration ${key.slice(key.indexOf(":") + 1)}`,
+            code: "duplicate",
+          });
+        }
+        if (key !== null) seen.add(key);
+      }
+    }
+    for (const child of node.namedChildren) visit(child);
+  };
+  visit(root);
+  return issues;
+}
+
 function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "python") return collectPythonSymbols(root);
   if (languageId === "go") return collectGoSymbols(root);
@@ -2142,6 +2207,7 @@ function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "swift") return collectSwiftSymbols(root);
   if (languageId === "sql") return collectSqlSymbols(root);
   if (languageId === "toml") return collectTomlSymbols(root);
+  if (languageId === "xml") return collectXmlSymbols(root);
   const issues: ParseIssue[] = [];
   const scopes: Array<Map<string, Binding>> = [new Map<string, Binding>()];
 

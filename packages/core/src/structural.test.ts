@@ -1995,6 +1995,126 @@ describe("structural strategies", () => {
     expect(chosen?.candidates[0]?.result).toBe("alpha = 2\n# note\nbeta = 3\n");
   });
 
+  it("merges XML elements that each side edits", () => {
+    const base = "<root><alpha>1</alpha><beta>1</beta></root>\n";
+    const chosen = proposalForLanguage(
+      "xml",
+      "file.xml",
+      base,
+      "<root><alpha>2</alpha><beta>1</beta></root>\n",
+      "<root><alpha>1</alpha><beta>3</beta></root>\n",
+    );
+    expect(chosen?.recommended).toBe("hunk:1:structural-3way");
+    expect(chosen?.candidates[0]).toMatchObject({
+      result: "<root><alpha>2</alpha><beta>3</beta></root>\n",
+      band: "high",
+      confidence: 0.95,
+      hazardous: false,
+      evidence: [
+        {
+          code: "xml-elements",
+          text: "Each side edited different elements. Untouched text is copied from the base.",
+        },
+      ],
+    });
+    expect(chosen?.autoApplyEligible).toBe(false);
+  });
+
+  it("keeps a prefixed XML name distinct from the local name", () => {
+    const base = "<root><h:table>1</h:table><table>1</table></root>\n";
+    const chosen = proposalForLanguage(
+      "xml",
+      "file.xml",
+      base,
+      "<root><h:table>2</h:table><table>1</table></root>\n",
+      "<root><h:table>1</h:table><table>3</table></root>\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "<root><h:table>2</h:table><table>3</table></root>\n",
+    );
+  });
+
+  it("does not merge an XML element that both sides change", () => {
+    const chosen = proposalForLanguage(
+      "xml",
+      "file.xml",
+      "<alpha>1</alpha>\n",
+      "<alpha>2</alpha>\n",
+      "<alpha>3</alpha>\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+  });
+
+  it("does not merge an XML element when both sides change its attribute", () => {
+    const chosen = proposalForLanguage(
+      "xml",
+      "file.xml",
+      '<item id="a">1</item>\n',
+      '<item id="b">1</item>\n',
+      '<item id="c">1</item>\n',
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge XML text by position", () => {
+    const chosen = proposalForLanguage(
+      "xml",
+      "file.xml",
+      "<root>left<one/>right</root>\n",
+      "<root>LEFT<one/>right</root>\n",
+      "<root>left<one/>RIGHT</root>\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge XML entity references by position", () => {
+    const chosen = proposalForLanguage(
+      "xml",
+      "file.xml",
+      "<root>&amp;&lt;</root>\n",
+      "<root>&amp;&gt;</root>\n",
+      "<root>&quot;&lt;</root>\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge an XML CDATA section by position", () => {
+    const chosen = proposalForLanguage(
+      "xml",
+      "file.xml",
+      "<root><![CDATA[a]]><![CDATA[b]]></root>\n",
+      "<root><![CDATA[A]]><![CDATA[b]]></root>\n",
+      "<root><![CDATA[a]]><![CDATA[B]]></root>\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("keeps an XML comment between elements", () => {
+    const base = "<root><alpha>1</alpha><!-- note --><beta>1</beta></root>\n";
+    const chosen = proposalForLanguage(
+      "xml",
+      "file.xml",
+      base,
+      "<root><alpha>2</alpha><!-- note --><beta>1</beta></root>\n",
+      "<root><alpha>1</alpha><!-- note --><beta>3</beta></root>\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "<root><alpha>2</alpha><!-- note --><beta>3</beta></root>\n",
+    );
+  });
+
   it("does not merge a Python function that both sides change", () => {
     const chosen = proposalForLanguage(
       "python",
@@ -2037,6 +2157,7 @@ describe("structural languages", () => {
     expect(STRUCTURAL_LANGUAGES).toContain("swift");
     expect(STRUCTURAL_LANGUAGES).toContain("sql");
     expect(STRUCTURAL_LANGUAGES).toContain("toml");
+    expect(STRUCTURAL_LANGUAGES).toContain("xml");
     for (const languageId of STRUCTURAL_LANGUAGES) {
       expect(isStructuralLanguage(languageId)).toBe(true);
     }
@@ -2290,6 +2411,18 @@ describe("breakage checks", () => {
     expect(repeatedTable.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
     expect(differentTables.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
     expect(verifyParsed("file.toml", duplicated, clean, clean).hazardous).toBe(true);
+  });
+
+  it("flags a repeated XML element", () => {
+    const clean = parseSource("xml", "<parent><item>1</item></parent>\n");
+    const duplicated = parseSource("xml", "<parent><item>1</item><item>2</item></parent>\n");
+    const nested = parseSource("xml", "<item><item>1</item></item>\n");
+    if (!clean || !duplicated || !nested) throw new Error("parser unavailable");
+    expect(duplicated.hasErrors).toBe(false);
+    expect(duplicated.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(nested.hasErrors).toBe(false);
+    expect(nested.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
+    expect(verifyParsed("file.xml", duplicated, clean, clean).hazardous).toBe(true);
   });
 
   it("flags a repeated Kotlin function and ignores an undeclared call", () => {

@@ -86,6 +86,7 @@ describe("language ids", () => {
     expect(toConflictFile({ ...source, path: "file.swift" }, operation).languageId).toBe("swift");
     expect(toConflictFile({ ...source, path: "file.sql" }, operation).languageId).toBe("sql");
     expect(toConflictFile({ ...source, path: "file.toml" }, operation).languageId).toBe("toml");
+    expect(toConflictFile({ ...source, path: "file.xml" }, operation).languageId).toBe("xml");
   });
 });
 
