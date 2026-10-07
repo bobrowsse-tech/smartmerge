@@ -224,6 +224,113 @@ describe("structural strategies", () => {
     );
   });
 
+  it("merges JSONC object keys that each side adds", () => {
+    const base = '{\n  "shared": 1\n}\n';
+    const chosen = proposalForLanguage(
+      "jsonc",
+      "file.jsonc",
+      base,
+      '{\n  "shared": 1,\n  "a": 1\n}\n',
+      '{\n  "shared": 1,\n  "b": 2\n}\n',
+    );
+    expect(chosen?.recommended).toBe("hunk:1:structural-3way");
+    expect(chosen?.candidates[0]).toMatchObject({
+      result: '{\n  "shared": 1,\n  "a": 1,\n  "b": 2\n}\n',
+      band: "high",
+      confidence: 0.95,
+      hazardous: false,
+      evidence: [
+        {
+          code: "jsonc-keys",
+          text: "Each side edited different object keys. A comment is not a key. Untouched text is copied from the base.",
+        },
+      ],
+    });
+    expect(chosen?.autoApplyEligible).toBe(false);
+  });
+
+  it("keeps a JSONC comment between keys", () => {
+    const chosen = proposalForLanguage(
+      "jsonc",
+      "file.jsonc",
+      '{\n  "shared": 1,\n  /* keep */\n  "tail": 0\n}\n',
+      '{\n  "shared": 1,\n  /* keep */\n  "tail": 0,\n  "a": 1\n}\n',
+      '{\n  "shared": 1,\n  /* keep */\n  "tail": 0,\n  "b": 2\n}\n',
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      '{\n  "shared": 1,\n  /* keep */\n  "tail": 0,\n  "a": 1,\n  "b": 2\n}\n',
+    );
+  });
+
+  it("does not merge a JSONC key that both sides change", () => {
+    const chosen = proposalForLanguage(
+      "jsonc",
+      "file.jsonc",
+      '{ "n": 1 }\n',
+      '{ "n": 2 }\n',
+      '{ "n": 3 }\n',
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge a JSONC array that both sides change", () => {
+    const chosen = proposalForLanguage("jsonc", "file.jsonc", "[1]\n", "[1, 2]\n", "[1, 3]\n");
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("treats an escaped JSONC key as the same key", () => {
+    const chosen = proposalForLanguage(
+      "jsonc",
+      "file.jsonc",
+      '{ "a": 1 }\n',
+      '{ "a": 2 }\n',
+      '{ "\\u0061": 3 }\n',
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("drops the comma of a deleted first JSONC key", () => {
+    const chosen = proposalForLanguage(
+      "jsonc",
+      "file.jsonc",
+      '{\n  "a": 1,\n  "b": 2\n}\n',
+      '{\n  "b": 2\n}\n',
+      '{\n  "a": 1,\n  "b": 2,\n  "c": 3\n}\n',
+    );
+    expect(chosen?.candidates[0]?.result).toBe('{\n  "b": 2,\n  "c": 3\n}\n');
+  });
+
+  it("merges a JSONC object with no comment the same way as JSON", () => {
+    const base = '{\n  "shared": 1\n}\n';
+    const current = '{\n  "shared": 1,\n  "a": 1\n}\n';
+    const incoming = '{\n  "shared": 1,\n  "b": 2\n}\n';
+    const json = proposalForLanguage("json", "data.json", base, current, incoming);
+    const jsonc = proposalForLanguage("jsonc", "file.jsonc", base, current, incoming);
+    expect(jsonc?.candidates[0]?.result).toBe(json?.candidates[0]?.result);
+  });
+
+  it("does not structurally merge a JSONC trailing comma", () => {
+    expect(parseSource("jsonc", '{ "a": 1, }\n')?.hasErrors).toBe(true);
+    const chosen = proposalForLanguage(
+      "jsonc",
+      "file.jsonc",
+      '{ "a": 1 }\n',
+      '{ "a": 1, }\n',
+      '{ "a": 1 }\n',
+    );
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
   it("merges YAML mapping keys that each side adds", () => {
     const chosen = proposalForLanguage(
       "yaml",
@@ -2246,6 +2353,7 @@ describe("structural languages", () => {
   it("advertises every language the parser can load", () => {
     expect(STRUCTURAL_LANGUAGES).toContain("python");
     expect(STRUCTURAL_LANGUAGES).toContain("json");
+    expect(STRUCTURAL_LANGUAGES).toContain("jsonc");
     expect(STRUCTURAL_LANGUAGES).toContain("yaml");
     expect(STRUCTURAL_LANGUAGES).toContain("go");
     expect(STRUCTURAL_LANGUAGES).toContain("java");
@@ -2302,6 +2410,20 @@ describe("breakage checks", () => {
     expect(duplicated.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
     expect(escaped.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
     expect(verifyParsed("data.json", duplicated, clean, clean).hazardous).toBe(true);
+  });
+
+  it("flags a repeated JSONC object key", () => {
+    const clean = parseSource("jsonc", '{ "a": 1, "b": 2 }\n');
+    const duplicated = parseSource("jsonc", '{ "a": 1, "a": 2 }\n');
+    const nested = parseSource("jsonc", '{ "a": 1, "box": { "a": 2 } }\n');
+    const commented = parseSource("jsonc", '{ "a": 1, /* "a" */ "b": 2 }\n');
+    if (!clean || !duplicated || !nested || !commented) throw new Error("parser unavailable");
+    expect(duplicated.hasErrors).toBe(false);
+    expect(duplicated.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(nested.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
+    expect(commented.hasErrors).toBe(false);
+    expect(commented.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
+    expect(verifyParsed("file.jsonc", duplicated, clean, clean).hazardous).toBe(true);
   });
 
   it("flags a repeated YAML mapping key", () => {

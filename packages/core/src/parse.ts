@@ -75,6 +75,7 @@ export const STRUCTURAL_LANGUAGES = [
   "javascript",
   "javascriptreact",
   "json",
+  "jsonc",
   "yaml",
   "python",
   "go",
@@ -256,6 +257,7 @@ async function loadParsers(): Promise<void> {
     ["javascript", javascript],
     ["javascriptreact", javascript],
     ["json", json],
+    ["jsonc", json],
     ["yaml", yaml],
     ["python", python],
     ["go", go],
@@ -375,6 +377,7 @@ function keyFor(languageId: string, node: SyntaxNode): { key: string; stable: bo
     if (markdownKey !== null) return { key: markdownKey, stable: true };
     return { key: node.type, stable: false };
   }
+  if (languageId === "jsonc") return jsoncDefinitionKey(node);
   if (node.type === "pair") {
     const key = node.childForFieldName("key");
     const raw = key?.text ?? "";
@@ -512,6 +515,7 @@ function containerRange(
   if (languageId === "toml") return tomlItemBody(node);
   if (languageId === "xml") return xmlItemBody(node);
   if (languageId === "markdown") return markdownItemBody(node);
+  if (languageId === "jsonc") return jsoncItemBody(node);
   if (languageId === "cpp") {
     const cppBody = cppItemBody(node);
     if (cppBody) return cppBody;
@@ -2264,6 +2268,52 @@ function collectMarkdownSymbols(root: SyntaxNode): ParseIssue[] {
   return issues;
 }
 
+function jsoncDefinitionKey(node: SyntaxNode): { key: string; stable: boolean } {
+  if (node.type !== "pair") return { key: node.type, stable: false };
+  const raw = node.childForFieldName("key")?.text ?? "";
+  const text = decodeJsonString(raw);
+  if (text === null || text.length === 0) return { key: node.type, stable: false };
+  return { key: `pair:${text}`, stable: true };
+}
+
+function jsoncItemBody(
+  node: SyntaxNode,
+): { parent: SyntaxNode; start: number; end: number } | null {
+  if (node.type === "object") return objectInterior(node);
+  if (node.type !== "pair") return null;
+  const value = node.childForFieldName("value");
+  if (!value || value.type !== "object") return null;
+  return objectInterior(value);
+}
+
+function collectJsoncSymbols(root: SyntaxNode): ParseIssue[] {
+  const issues: ParseIssue[] = [];
+  const visit = (node: SyntaxNode): void => {
+    if (node.type !== "object") {
+      for (const child of node.namedChildren) visit(child);
+      return;
+    }
+    const seen = new Set<string>();
+    for (const child of node.namedChildren) {
+      if (child.type !== "pair") continue;
+      const raw = child.childForFieldName("key")?.text ?? "";
+      const text = decodeJsonString(raw);
+      if (text !== null && text.length > 0 && seen.has(text)) {
+        issues.push({
+          line: child.startPosition.row + 1,
+          message: `Duplicate key ${JSON.stringify(text)}`,
+          code: "duplicate",
+        });
+      }
+      if (text !== null && text.length > 0) seen.add(text);
+      const value = child.childForFieldName("value");
+      if (value) visit(value);
+    }
+  };
+  visit(root);
+  return issues;
+}
+
 function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "python") return collectPythonSymbols(root);
   if (languageId === "go") return collectGoSymbols(root);
@@ -2280,6 +2330,7 @@ function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "toml") return collectTomlSymbols(root);
   if (languageId === "xml") return collectXmlSymbols(root);
   if (languageId === "markdown") return collectMarkdownSymbols(root);
+  if (languageId === "jsonc") return collectJsoncSymbols(root);
   const issues: ParseIssue[] = [];
   const scopes: Array<Map<string, Binding>> = [new Map<string, Binding>()];
 

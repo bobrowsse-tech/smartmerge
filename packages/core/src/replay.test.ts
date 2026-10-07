@@ -172,6 +172,28 @@ describe("replayConflicts", () => {
     });
   });
 
+  it("keeps a JSONC whole-file merge in the high band", async () => {
+    const report = await replayConflicts([
+      {
+        repository: "sample",
+        path: "file.jsonc",
+        conflicted:
+          'prefix\n<<<<<<< current\n  "a": 1,\n=======\n  "b": 2,\n>>>>>>> incoming\nsuffix\n',
+        base: '{\n  "shared": 1\n}\n',
+        current: '{\n  "shared": 1,\n  "a": 1\n}\n',
+        incoming: '{\n  "shared": 1,\n  "b": 2\n}\n',
+        humanResult: '{\n  "shared": 1,\n  "a": 1,\n  "b": 2\n}\n',
+      },
+    ]);
+    expect(report.predicted).toBe(1);
+    expect(report.rows[0]).toEqual({
+      repository: "sample",
+      confidence: 0.95,
+      correct: true,
+      confidenceSource: "fixed-proposal",
+    });
+  });
+
   it("keeps a YAML whole-file merge in the high band", async () => {
     const report = await replayConflicts([
       {
