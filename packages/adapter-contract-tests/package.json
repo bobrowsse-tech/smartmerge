@@ -1,0 +1,12 @@
+{
+  "name": "@smartmerge/adapter-contract-tests",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Checks that an editor adapter does not import resolution, merge, or strategy modules.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run --config ../../vitest.config.ts"
+  }
+}

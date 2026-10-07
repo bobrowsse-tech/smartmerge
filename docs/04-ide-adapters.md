@@ -11,6 +11,8 @@ An adapter must do only four things:
 
 No conflict logic, ever.
 
+`packages/adapter-contract-tests` checks that an adapter does not import resolution, merge, or strategy modules. The current editor adapter passes that check.
+
 ## Capability matrix
 
 | Adapter                                                             | Language                 | UI approach                                                             | Distribution                   | Priority             |

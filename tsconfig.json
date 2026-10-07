@@ -10,6 +10,7 @@
     { "path": "packages/agent-kit" },
     { "path": "packages/ui" },
     { "path": "packages/adapters/vscode" },
+    { "path": "packages/adapter-contract-tests" },
     { "path": "tsconfig.tools.json" }
   ]
 }
