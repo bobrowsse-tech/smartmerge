@@ -105,9 +105,11 @@ Every proposal carries `explanation`: strategy in plain words, evidence bullets 
 
 ## Language support plan
 
-Tier 1: TypeScript/JavaScript (incl. TSX/JSX), JSON/JSONC, YAML, and Markdown. Markdown is covered below.
+Tier 1: TypeScript/JavaScript (incl. TSX/JSX), JSON/JSONC, YAML, and Markdown. JSONC and Markdown are covered below.
 
 JSON objects merge by key. A comma is inserted when two keys become neighbors, and a comma left behind by a deleted first key is dropped. Arrays stay order-sensitive, so a change on both sides is not combined. Escaped key spellings match after decoding. A clean JSON structural result stays in the high confidence band until a JSON replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
+
+JSONC objects merge by key the same way. A comment is not a key. A comma is inserted when two keys become neighbors, and a comma left behind by a deleted first key is dropped. A trailing comma is a syntax error in this grammar, so the structural merge does not run and that comma is not rewritten. Arrays stay order-sensitive. Escaped key spellings match after decoding. A clean JSONC structural result stays in the high confidence band until a JSONC replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
 
 YAML mappings merge by key the same way. Sequences stay order-sensitive. A plain key and a quoted spelling of the same text match, including a hex escape in a double-quoted key. An added key in a flow mapping stays before a trailing comment. A clean YAML structural result stays in the high confidence band until a YAML replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
 

@@ -22,10 +22,11 @@ const UNCHECKED_CAP = 0.8;
 
 /**
  * Fixed score for a structural result after syntax and symbol checks.
- * JSON, YAML, Python, Go, Java, Kotlin, C#, Rust, C, C++, PHP, Ruby, Swift, SQL, TOML, XML, and Markdown stay in the high band until a replay corpus exists, so a clean merge is not marked certain.
+ * JSON, JSONC, YAML, Python, Go, Java, Kotlin, C#, Rust, C, C++, PHP, Ruby, Swift, SQL, TOML, XML, and Markdown stay in the high band until a replay corpus exists, so a clean merge is not marked certain.
  */
 const HIGH_UNTIL_CORPUS = new Set([
   "json",
+  "jsonc",
   "yaml",
   "python",
   "go",
@@ -59,6 +60,11 @@ function structuralEvidence(languageId: string | null): { code: string; text: st
       return {
         code: "json-keys",
         text: "Each side edited different object keys. Untouched text is copied from the base.",
+      };
+    case "jsonc":
+      return {
+        code: "jsonc-keys",
+        text: "Each side edited different object keys. A comment is not a key. Untouched text is copied from the base.",
       };
     case "yaml":
       return {

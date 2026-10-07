@@ -267,6 +267,8 @@ function languageIdFor(path: string): string | null {
       return "javascriptreact";
     case "json":
       return "json";
+    case "jsonc":
+      return "jsonc";
     case "yaml":
     case "yml":
       return "yaml";
