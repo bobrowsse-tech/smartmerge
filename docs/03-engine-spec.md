@@ -129,8 +129,10 @@ C++ functions and methods merge by name. Overloads stay distinct by parameter ty
 
 PHP functions and methods merge by name. Classes, interfaces, traits, and enums merge by name. A braced namespace is named, and the functions and classes inside it merge. A constant with one name merges by that name. A function or other item that both sides change is left alone. Properties, statements, and use declarations are not merged by position. A clean PHP structural result stays in the high confidence band until a PHP replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
 
+Ruby methods merge by name. Classes and modules merge by name. A method includes its class or module. A singleton method stays distinct from an instance method of the same name. A method that both sides change is left alone. Assignments, statements, and require, include, and extend calls are not merged by position. A clean Ruby structural result stays in the high confidence band until a Ruby replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
+
 Tier 2: Python functions and classes, Go functions and methods, Java types and methods, Kotlin types and functions, C# types and methods, and Rust items are covered above.
-Tier 3: C, C++, and PHP are covered above. Ruby, Swift, SQL, TOML, and XML remain.
+Tier 3: C, C++, PHP, and Ruby are covered above. Swift, SQL, TOML, and XML remain.
 Unsupported: line-based strategies only, confidence caps apply.
 
 ## Failure handling

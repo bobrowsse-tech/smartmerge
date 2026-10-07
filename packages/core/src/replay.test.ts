@@ -307,6 +307,28 @@ describe("replayConflicts", () => {
     });
   });
 
+  it("keeps a Ruby whole-file merge in the high band", async () => {
+    const report = await replayConflicts([
+      {
+        repository: "sample",
+        path: "file.rb",
+        conflicted:
+          "prefix\n<<<<<<< current\n    return (\n=======\n    return [\n>>>>>>> incoming\nsuffix\n",
+        base: "def alpha\n  1\nend\ndef beta\n  1\nend\n",
+        current: "def alpha\n  2\nend\ndef beta\n  1\nend\n",
+        incoming: "def alpha\n  1\nend\ndef beta\n  3\nend\n",
+        humanResult: "def alpha\n  2\nend\ndef beta\n  3\nend\n",
+      },
+    ]);
+    expect(report.predicted).toBe(1);
+    expect(report.rows[0]).toEqual({
+      repository: "sample",
+      confidence: 0.95,
+      correct: true,
+      confidenceSource: "fixed-proposal",
+    });
+  });
+
   it("keeps a C++ whole-file merge in the high band", async () => {
     const report = await replayConflicts([
       {
