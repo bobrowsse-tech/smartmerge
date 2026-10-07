@@ -32,7 +32,7 @@ export function mergeRegions(
     const node = currentMap.get(key) ?? incomingMap.get(key) ?? baseMap.get(key);
     let piece = mergeKey(baseMap.get(key), currentMap.get(key), incomingMap.get(key));
     if (piece === null) return false;
-    if (piece !== OMIT && node !== undefined && isFlowPair(node.type)) {
+    if (piece !== OMIT && node !== undefined && isFlowPair(node)) {
       // Commas sit on the following pair. The first kept pair must not keep a
       // comma that belonged to a deleted predecessor, and a newly adjacent pair
       // needs a comma when neither slice already has one.
@@ -271,8 +271,8 @@ function assignKeys(
   });
 }
 
-function isFlowPair(type: string): boolean {
-  return type === "pair" || type === "flow_pair";
+function isFlowPair(node: ConcreteNode): boolean {
+  return node.flow;
 }
 
 function stripLeadingComma(slice: string): string {

@@ -36,9 +36,14 @@ export interface ConcreteNode {
   type: string;
   /**
    * When false, an unstable node is not aligned by position.
-   * Python, Go, Java, Kotlin, C#, Rust, C, C++, PHP, Ruby, Swift, and SQL statements use this so two assignments are not merged just because they line up.
+   * Python, Go, Java, Kotlin, C#, Rust, C, C++, PHP, Ruby, Swift, SQL, and TOML statements use this so two assignments are not merged just because they line up.
    */
   positional: boolean;
+  /**
+   * When true, a following pair needs a comma.
+   * TOML pairs use this only inside an inline table.
+   */
+  flow: boolean;
   body: string;
   slice: string;
   /** Text from the start of `body` through the opening delimiter of `children`. */
@@ -83,6 +88,7 @@ export const STRUCTURAL_LANGUAGES = [
   "ruby",
   "swift",
   "sql",
+  "toml",
 ] as const;
 
 const SUPPORTED = new Set<string>(STRUCTURAL_LANGUAGES);
@@ -227,6 +233,12 @@ async function loadParsers(): Promise<void> {
   const sql = await Language.load(
     grammar("@l1xnan/tree-sitter-sql/tree-sitter-sql.wasm", "tree-sitter-sql.wasm"),
   );
+  const toml = await Language.load(
+    grammar(
+      "@tree-sitter-grammars/tree-sitter-toml/tree-sitter-toml.wasm",
+      "tree-sitter-toml.wasm",
+    ),
+  );
   languages = new Map<string, Language>([
     ["typescript", typescript],
     ["typescriptreact", tsx],
@@ -246,6 +258,7 @@ async function loadParsers(): Promise<void> {
     ["ruby", ruby],
     ["swift", swift],
     ["sql", sql],
+    ["toml", toml],
   ]);
 }
 
@@ -307,6 +320,7 @@ function toNode(languageId: string, source: string, node: SyntaxNode, slice: str
       stable: key.stable,
       type: declared.type,
       positional: statementPositional(languageId, key.stable),
+      flow: tomlFlow(languageId, declared),
       body,
       slice,
       prefix: "",
@@ -319,6 +333,7 @@ function toNode(languageId: string, source: string, node: SyntaxNode, slice: str
     stable: key.stable,
     type: declared.type,
     positional: statementPositional(languageId, key.stable),
+    flow: tomlFlow(languageId, declared),
     body,
     slice,
     prefix: source.slice(node.startIndex, inner.start),
@@ -332,6 +347,11 @@ function innerDeclaration(node: SyntaxNode): SyntaxNode | null {
 }
 
 function keyFor(languageId: string, node: SyntaxNode): { key: string; stable: boolean } {
+  if (languageId === "toml") {
+    const tomlKey = tomlDefinitionKey(node);
+    if (tomlKey !== null) return { key: tomlKey, stable: true };
+    return { key: node.type, stable: false };
+  }
   if (node.type === "pair") {
     const key = node.childForFieldName("key");
     const raw = key?.text ?? "";
@@ -466,6 +486,7 @@ function containerRange(
   languageId: string,
   node: SyntaxNode,
 ): { parent: SyntaxNode; start: number; end: number } | null {
+  if (languageId === "toml") return tomlItemBody(node);
   if (languageId === "cpp") {
     const cppBody = cppItemBody(node);
     if (cppBody) return cppBody;
@@ -679,7 +700,8 @@ function statementPositional(languageId: string, stable: boolean): boolean {
     languageId !== "php" &&
     languageId !== "ruby" &&
     languageId !== "swift" &&
-    languageId !== "sql"
+    languageId !== "sql" &&
+    languageId !== "toml"
   );
 }
 
@@ -1925,6 +1947,187 @@ function collectSqlSymbols(root: SyntaxNode): ParseIssue[] {
   return issues;
 }
 
+function tomlFlow(languageId: string, node: SyntaxNode): boolean {
+  if (node.type === "flow_pair") return true;
+  if (node.type !== "pair") return false;
+  if (languageId !== "toml") return true;
+  return node.parent?.type === "inline_table";
+}
+
+const TOML_SIMPLE_ESCAPES: Readonly<Record<string, string>> = {
+  b: "\b",
+  t: "\t",
+  n: "\n",
+  f: "\f",
+  r: "\r",
+  '"': '"',
+  "\\": "\\",
+};
+
+function tomlBasicString(inner: string): string | null {
+  let output = "";
+  for (let index = 0; index < inner.length; index += 1) {
+    const character = inner.charAt(index);
+    if (character !== "\\") {
+      output += character;
+      continue;
+    }
+    const next = inner.charAt(index + 1);
+    if (next.length === 0) return null;
+    const simple = TOML_SIMPLE_ESCAPES[next];
+    if (simple !== undefined) {
+      output += simple;
+      index += 1;
+      continue;
+    }
+    if (next !== "u" && next !== "U") return null;
+    const width = next === "u" ? 4 : 8;
+    const hex = inner.slice(index + 2, index + 2 + width);
+    if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length !== width) return null;
+    const code = Number.parseInt(hex, 16);
+    // A value outside the Unicode scalar range does not decode, so the pair stays unstable.
+    if (code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return null;
+    output += String.fromCodePoint(code);
+    index += 1 + width;
+  }
+  return output;
+}
+
+function tomlQuotedText(text: string): string | null {
+  if (text.length >= 2 && text.startsWith('"') && text.endsWith('"')) {
+    return tomlBasicString(text.slice(1, -1));
+  }
+  if (text.length >= 2 && text.startsWith("'") && text.endsWith("'")) return text.slice(1, -1);
+  return null;
+}
+
+function tomlSegments(node: SyntaxNode): string[] | null {
+  if (node.type === "bare_key") return node.text.length > 0 ? [node.text] : null;
+  if (node.type === "quoted_key") {
+    const decoded = tomlQuotedText(node.text);
+    if (decoded === null || decoded.length === 0) return null;
+    return [decoded];
+  }
+  if (node.type !== "dotted_key") return null;
+  const parts: string[] = [];
+  const walk = (current: SyntaxNode): boolean => {
+    if (current.type === "dotted_key") {
+      for (const child of current.namedChildren) {
+        if (!walk(child)) return false;
+      }
+      return current.namedChildren.length > 0;
+    }
+    const segment = tomlSegments(current);
+    if (!segment) return false;
+    parts.push(...segment);
+    return true;
+  };
+  return walk(node) && parts.length > 0 ? parts : null;
+}
+
+function tomlHeader(node: SyntaxNode, endType: string): SyntaxNode | null {
+  let limit = node.endIndex;
+  for (let index = 0; index < node.childCount; index += 1) {
+    const child = node.child(index);
+    if (child?.type === endType) {
+      limit = child.startIndex;
+      break;
+    }
+  }
+  for (const child of node.namedChildren) {
+    if (child.startIndex >= limit) break;
+    if (child.type === "bare_key" || child.type === "quoted_key" || child.type === "dotted_key") {
+      return child;
+    }
+  }
+  return null;
+}
+
+function tomlValue(pair: SyntaxNode): SyntaxNode | null {
+  const header = tomlHeader(pair, "=");
+  if (!header) return null;
+  for (const child of pair.namedChildren) {
+    if (child.startIndex < header.endIndex || child.type === "comment") continue;
+    return child;
+  }
+  return null;
+}
+
+function tomlSerialized(node: SyntaxNode): string | null {
+  const segments = tomlSegments(node);
+  return segments === null ? null : JSON.stringify(segments);
+}
+
+/** Stable key for a TOML pair or table. Comments, arrays, and array tables stay unnamed. */
+function tomlDefinitionKey(node: SyntaxNode): string | null {
+  if (node.type === "pair") {
+    const header = tomlHeader(node, "=");
+    if (!header) return null;
+    const text = tomlSerialized(header);
+    return text === null ? null : `key:${text}`;
+  }
+  if (node.type === "table") {
+    const header = tomlHeader(node, "]");
+    if (!header) return null;
+    const text = tomlSerialized(header);
+    return text === null ? null : `table:${text}`;
+  }
+  return null;
+}
+
+function tomlItemBody(node: SyntaxNode): { parent: SyntaxNode; start: number; end: number } | null {
+  if (node.type === "table") {
+    let closeEnd = -1;
+    for (let index = 0; index < node.childCount; index += 1) {
+      const child = node.child(index);
+      if (child?.type === "]") closeEnd = child.endIndex;
+    }
+    if (closeEnd < 0 || closeEnd > node.endIndex) return null;
+    return { parent: node, start: closeEnd, end: node.endIndex };
+  }
+  if (node.type !== "pair") return null;
+  const value = tomlValue(node);
+  if (!value || value.type !== "inline_table" || value.endIndex - value.startIndex < 2) return null;
+  return { parent: value, start: value.startIndex + 1, end: value.endIndex - 1 };
+}
+
+function collectTomlSymbols(root: SyntaxNode): ParseIssue[] {
+  const issues: ParseIssue[] = [];
+  const visit = (node: SyntaxNode, tables: boolean): void => {
+    const seenKeys = new Set<string>();
+    const seenTables = new Set<string>();
+    for (const child of node.namedChildren) {
+      if (child.type === "array" || child.type === "table_array_element") continue;
+      if (child.type === "pair") {
+        const key = tomlDefinitionKey(child);
+        if (key !== null && seenKeys.has(key)) {
+          issues.push({
+            line: child.startPosition.row + 1,
+            message: `Duplicate declaration ${key.slice(key.indexOf(":") + 1)}`,
+            code: "duplicate",
+          });
+        }
+        if (key !== null) seenKeys.add(key);
+        const value = tomlValue(child);
+        if (value?.type === "inline_table") visit(value, false);
+      } else if (tables && child.type === "table") {
+        const key = tomlDefinitionKey(child);
+        if (key !== null && seenTables.has(key)) {
+          issues.push({
+            line: child.startPosition.row + 1,
+            message: `Duplicate declaration ${key.slice(key.indexOf(":") + 1)}`,
+            code: "duplicate",
+          });
+        }
+        if (key !== null) seenTables.add(key);
+        visit(child, false);
+      }
+    }
+  };
+  visit(root, true);
+  return issues;
+}
+
 function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "python") return collectPythonSymbols(root);
   if (languageId === "go") return collectGoSymbols(root);
@@ -1938,6 +2141,7 @@ function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "ruby") return collectRubySymbols(root);
   if (languageId === "swift") return collectSwiftSymbols(root);
   if (languageId === "sql") return collectSqlSymbols(root);
+  if (languageId === "toml") return collectTomlSymbols(root);
   const issues: ParseIssue[] = [];
   const scopes: Array<Map<string, Binding>> = [new Map<string, Binding>()];
 

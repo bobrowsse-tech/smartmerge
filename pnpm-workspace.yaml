@@ -26,4 +26,5 @@ allowBuilds:
   tree-sitter-ruby: false
   "@binclusive/tree-sitter-swift-wasm": false
   "@l1xnan/tree-sitter-sql": false
+  "@tree-sitter-grammars/tree-sitter-toml": false
   tree-sitter: false
