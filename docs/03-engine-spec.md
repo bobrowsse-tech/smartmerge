@@ -133,8 +133,10 @@ Ruby methods merge by name. Classes and modules merge by name. A method includes
 
 Swift functions and methods merge by name. Classes, structs, enums, and protocols merge by name. A method includes its enclosing type. Enum cases merge by name inside their enum. An initializer is left alone. A function or other item that both sides change is left alone. Assignments, statements, and import declarations are not merged by position. A clean Swift structural result stays in the high confidence band until a Swift replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
 
+SQL tables, views, and functions merge by name. A name keeps its schema qualification. A materialized view stays distinct from a view of the same name. Columns merge by name inside their table. A function body is left alone. A statement that both sides change is left alone. Inserts, assignments, and other statements are not merged by position. A clean SQL structural result stays in the high confidence band until a SQL replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
+
 Tier 2: Python functions and classes, Go functions and methods, Java types and methods, Kotlin types and functions, C# types and methods, and Rust items are covered above.
-Tier 3: C, C++, PHP, Ruby, and Swift are covered above. SQL, TOML, and XML remain.
+Tier 3: C, C++, PHP, Ruby, Swift, and SQL are covered above. TOML and XML remain.
 Unsupported: line-based strategies only, confidence caps apply.
 
 ## Failure handling

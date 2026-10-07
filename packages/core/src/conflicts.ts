@@ -294,6 +294,8 @@ function languageIdFor(path: string): string | null {
       return "ruby";
     case "swift":
       return "swift";
+    case "sql":
+      return "sql";
     case "java":
       return "java";
     case "kt":

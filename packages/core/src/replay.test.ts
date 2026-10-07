@@ -351,6 +351,28 @@ describe("replayConflicts", () => {
     });
   });
 
+  it("keeps a SQL whole-file merge in the high band", async () => {
+    const report = await replayConflicts([
+      {
+        repository: "sample",
+        path: "file.sql",
+        conflicted:
+          "prefix\n<<<<<<< current\n    return (\n=======\n    return [\n>>>>>>> incoming\nsuffix\n",
+        base: "CREATE TABLE alpha (id INT);\nCREATE TABLE beta (id INT);\n",
+        current: "CREATE TABLE alpha (id TEXT);\nCREATE TABLE beta (id INT);\n",
+        incoming: "CREATE TABLE alpha (id INT);\nCREATE TABLE beta (id TEXT);\n",
+        humanResult: "CREATE TABLE alpha (id TEXT);\nCREATE TABLE beta (id TEXT);\n",
+      },
+    ]);
+    expect(report.predicted).toBe(1);
+    expect(report.rows[0]).toEqual({
+      repository: "sample",
+      confidence: 0.95,
+      correct: true,
+      confidenceSource: "fixed-proposal",
+    });
+  });
+
   it("keeps a C++ whole-file merge in the high band", async () => {
     const report = await replayConflicts([
       {

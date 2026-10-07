@@ -36,7 +36,7 @@ export interface ConcreteNode {
   type: string;
   /**
    * When false, an unstable node is not aligned by position.
-   * Python, Go, Java, Kotlin, C#, Rust, C, C++, PHP, Ruby, and Swift statements use this so two assignments are not merged just because they line up.
+   * Python, Go, Java, Kotlin, C#, Rust, C, C++, PHP, Ruby, Swift, and SQL statements use this so two assignments are not merged just because they line up.
    */
   positional: boolean;
   body: string;
@@ -82,6 +82,7 @@ export const STRUCTURAL_LANGUAGES = [
   "php",
   "ruby",
   "swift",
+  "sql",
 ] as const;
 
 const SUPPORTED = new Set<string>(STRUCTURAL_LANGUAGES);
@@ -223,6 +224,9 @@ async function loadParsers(): Promise<void> {
   const swift = await Language.load(
     grammar("@binclusive/tree-sitter-swift-wasm/tree-sitter-swift.wasm", "tree-sitter-swift.wasm"),
   );
+  const sql = await Language.load(
+    grammar("@l1xnan/tree-sitter-sql/tree-sitter-sql.wasm", "tree-sitter-sql.wasm"),
+  );
   languages = new Map<string, Language>([
     ["typescript", typescript],
     ["typescriptreact", tsx],
@@ -241,6 +245,7 @@ async function loadParsers(): Promise<void> {
     ["php", php],
     ["ruby", ruby],
     ["swift", swift],
+    ["sql", sql],
   ]);
 }
 
@@ -394,6 +399,11 @@ function keyFor(languageId: string, node: SyntaxNode): { key: string; stable: bo
     if (swiftKey !== null) return { key: swiftKey, stable: true };
     return { key: node.type, stable: false };
   }
+  if (languageId === "sql") {
+    const sqlKey = sqlDefinitionKey(node);
+    if (sqlKey !== null) return { key: sqlKey, stable: true };
+    return { key: node.type, stable: false };
+  }
   const defined = pythonDefinition(node);
   if (defined) {
     const definitionName = defined.childForFieldName("name");
@@ -469,6 +479,7 @@ function containerRange(
     if (rubyBody) return rubyBody;
   }
   if (languageId === "swift") return swiftItemBody(node);
+  if (languageId === "sql") return sqlItemBody(node);
   const cBody = cItemBody(node);
   if (cBody) return cBody;
   const rustBody = rustItemBody(node);
@@ -667,7 +678,8 @@ function statementPositional(languageId: string, stable: boolean): boolean {
     languageId !== "cpp" &&
     languageId !== "php" &&
     languageId !== "ruby" &&
-    languageId !== "swift"
+    languageId !== "swift" &&
+    languageId !== "sql"
   );
 }
 
@@ -1826,6 +1838,93 @@ function collectSwiftSymbols(root: SyntaxNode): ParseIssue[] {
   return issues;
 }
 
+const SQL_CREATE_PREFIX: Readonly<Record<string, string>> = {
+  create_table: "table",
+  create_view: "view",
+  create_materialized_view: "materialized_view",
+  create_function: "function",
+};
+
+function sqlObjectText(node: SyntaxNode): string {
+  const reference = node.namedChildren.find((child) => child.type === "object_reference");
+  return reference && reference.text.length > 0 ? reference.text : "";
+}
+
+function sqlCreateKey(node: SyntaxNode): string | null {
+  const prefix = SQL_CREATE_PREFIX[node.type];
+  if (!prefix) return null;
+  const text = sqlObjectText(node);
+  return text.length > 0 ? `${prefix}:${text}` : null;
+}
+
+/** Stable key for a SQL table, view, function, or column. Inserts and constraints stay unnamed. */
+function sqlDefinitionKey(node: SyntaxNode): string | null {
+  if (node.type === "statement") {
+    const named = node.namedChildren;
+    if (named.length !== 1) return null;
+    const inner = named[0];
+    return inner ? sqlCreateKey(inner) : null;
+  }
+  const created = sqlCreateKey(node);
+  if (created !== null) return created;
+  if (node.type === "column_definition") {
+    const name = node.childForFieldName("name");
+    if (
+      !name ||
+      (name.type !== "identifier" && name.type !== "literal") ||
+      name.text.length === 0
+    ) {
+      return null;
+    }
+    return `column:${name.text}`;
+  }
+  return null;
+}
+
+function sqlColumnBody(
+  node: SyntaxNode,
+): { parent: SyntaxNode; start: number; end: number } | null {
+  const columns = node.namedChildren.find((child) => child.type === "column_definitions");
+  if (!columns || columns.endIndex - columns.startIndex < 2) return null;
+  return { parent: columns, start: columns.startIndex + 1, end: columns.endIndex - 1 };
+}
+
+function sqlItemBody(node: SyntaxNode): { parent: SyntaxNode; start: number; end: number } | null {
+  if (node.type === "create_table") return sqlColumnBody(node);
+  if (node.type !== "statement") return null;
+  const inner = node.namedChildren.find((child) => child.type === "create_table");
+  return inner ? sqlColumnBody(inner) : null;
+}
+
+function collectSqlSymbols(root: SyntaxNode): ParseIssue[] {
+  const issues: ParseIssue[] = [];
+  const seen = new Set<string>();
+  const visit = (node: SyntaxNode): void => {
+    if (node.type === "statement" || node.type === "function_body") {
+      if (node.type === "function_body") return;
+      for (const child of node.namedChildren) visit(child);
+      return;
+    }
+    const key = sqlDefinitionKey(node);
+    if (key !== null) {
+      const repeated = key.startsWith("table:") || key.startsWith("function:");
+      if (repeated && seen.has(key)) {
+        const label = key.slice(key.indexOf(":") + 1);
+        issues.push({
+          line: node.startPosition.row + 1,
+          message: `Duplicate declaration ${label}`,
+          code: "duplicate",
+        });
+      }
+      if (repeated) seen.add(key);
+      if (node.type === "create_function") return;
+    }
+    for (const child of node.namedChildren) visit(child);
+  };
+  visit(root);
+  return issues;
+}
+
 function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "python") return collectPythonSymbols(root);
   if (languageId === "go") return collectGoSymbols(root);
@@ -1838,6 +1937,7 @@ function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "php") return collectPhpSymbols(root);
   if (languageId === "ruby") return collectRubySymbols(root);
   if (languageId === "swift") return collectSwiftSymbols(root);
+  if (languageId === "sql") return collectSqlSymbols(root);
   const issues: ParseIssue[] = [];
   const scopes: Array<Map<string, Binding>> = [new Map<string, Binding>()];
 
