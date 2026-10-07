@@ -1829,6 +1829,172 @@ describe("structural strategies", () => {
     );
   });
 
+  it("merges TOML keys that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "toml",
+      "file.toml",
+      "alpha = 1\nbeta = 1\n",
+      "alpha = 2\nbeta = 1\n",
+      "alpha = 1\nbeta = 3\n",
+    );
+    expect(chosen?.recommended).toBe("hunk:1:structural-3way");
+    expect(chosen?.candidates[0]).toMatchObject({
+      result: "alpha = 2\nbeta = 3\n",
+      band: "high",
+      confidence: 0.95,
+      hazardous: false,
+      evidence: [
+        {
+          code: "toml-keys",
+          text: "Each side edited different keys. Untouched text is copied from the base.",
+        },
+      ],
+    });
+    expect(chosen?.autoApplyEligible).toBe(false);
+  });
+
+  it("merges TOML keys inside one table without inserting a comma", () => {
+    const base = "[server]\nalpha = 1\nbeta = 1\n";
+    const chosen = proposalForLanguage(
+      "toml",
+      "file.toml",
+      base,
+      "[server]\nalpha = 2\nbeta = 1\n",
+      "[server]\nalpha = 1\nbeta = 3\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe("[server]\nalpha = 2\nbeta = 3\n");
+  });
+
+  it("merges TOML keys inside an inline table and keeps the comma", () => {
+    const base = "point = { alpha = 1, beta = 1 }\n";
+    const chosen = proposalForLanguage(
+      "toml",
+      "file.toml",
+      base,
+      "point = { alpha = 2, beta = 1 }\n",
+      "point = { alpha = 1, beta = 3 }\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe("point = { alpha = 2, beta = 3 }\n");
+  });
+
+  it("merges two nested TOML tables", () => {
+    const base = "[a.b]\nvalue = 1\n\n[a.c]\nvalue = 1\n";
+    const chosen = proposalForLanguage(
+      "toml",
+      "file.toml",
+      base,
+      "[a.b]\nvalue = 2\n\n[a.c]\nvalue = 1\n",
+      "[a.b]\nvalue = 1\n\n[a.c]\nvalue = 3\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe("[a.b]\nvalue = 2\n\n[a.c]\nvalue = 3\n");
+  });
+
+  it("treats a quoted TOML key as the same key as the bare spelling", () => {
+    const chosen = proposalForLanguage(
+      "toml",
+      "file.toml",
+      "alpha = 1\nA = 1\n",
+      "'alpha' = 2\n\"\\u0041\" = 2\n",
+      "alpha = 3\nA = 3\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("keeps a literal TOML escape distinct from the decoded character", () => {
+    const base = "'\\u0041' = 1\nA = 1\n";
+    const chosen = proposalForLanguage(
+      "toml",
+      "file.toml",
+      base,
+      "'\\u0041' = 2\nA = 1\n",
+      "'\\u0041' = 1\nA = 3\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe("'\\u0041' = 2\nA = 3\n");
+  });
+
+  it("leaves an out-of-range TOML escape unstable", () => {
+    const source = '"\\U00110000" = 1\nalpha = 1\n';
+    expect(parseSource("toml", source)?.hasErrors).toBe(false);
+    const chosen = proposalForLanguage(
+      "toml",
+      "file.toml",
+      source,
+      '"\\U00110000" = 2\nalpha = 1\n',
+      '"\\U00110000" = 1\nalpha = 3\n',
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("keeps a quoted TOML dot distinct from a dotted key", () => {
+    const base = '"a.b" = 1\na.b = 1\n';
+    const chosen = proposalForLanguage(
+      "toml",
+      "file.toml",
+      base,
+      '"a.b" = 2\na.b = 1\n',
+      '"a.b" = 1\na.b = 3\n',
+    );
+    expect(chosen?.candidates[0]?.result).toBe('"a.b" = 2\na.b = 3\n');
+  });
+
+  it("does not merge a TOML key that both sides change", () => {
+    const chosen = proposalForLanguage(
+      "toml",
+      "file.toml",
+      "alpha = 1\n",
+      "alpha = 2\n",
+      "alpha = 3\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+  });
+
+  it("does not merge a TOML array by position", () => {
+    const chosen = proposalForLanguage(
+      "toml",
+      "file.toml",
+      "nums = [1, 2]\n",
+      "nums = [9, 2]\n",
+      "nums = [1, 8]\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge a TOML array of tables by position", () => {
+    const base = '[[item]]\nname = "a"\n\n[[item]]\nname = "b"\n';
+    const chosen = proposalForLanguage(
+      "toml",
+      "file.toml",
+      base,
+      '[[item]]\nname = "c"\n\n[[item]]\nname = "b"\n',
+      '[[item]]\nname = "a"\n\n[[item]]\nname = "d"\n',
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("keeps a TOML comment between keys", () => {
+    const base = "alpha = 1\n# note\nbeta = 1\n";
+    const chosen = proposalForLanguage(
+      "toml",
+      "file.toml",
+      base,
+      "alpha = 2\n# note\nbeta = 1\n",
+      "alpha = 1\n# note\nbeta = 3\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe("alpha = 2\n# note\nbeta = 3\n");
+  });
+
   it("does not merge a Python function that both sides change", () => {
     const chosen = proposalForLanguage(
       "python",
@@ -1870,6 +2036,7 @@ describe("structural languages", () => {
     expect(STRUCTURAL_LANGUAGES).toContain("ruby");
     expect(STRUCTURAL_LANGUAGES).toContain("swift");
     expect(STRUCTURAL_LANGUAGES).toContain("sql");
+    expect(STRUCTURAL_LANGUAGES).toContain("toml");
     for (const languageId of STRUCTURAL_LANGUAGES) {
       expect(isStructuralLanguage(languageId)).toBe(true);
     }
@@ -2108,6 +2275,21 @@ describe("breakage checks", () => {
     expect(differentSchema.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
     expect(called.symbolIssues.some((issue) => issue.code === "undeclared")).toBe(false);
     expect(verifyParsed("file.sql", duplicated, clean, clean).hazardous).toBe(true);
+  });
+
+  it("flags a repeated TOML key or table", () => {
+    const clean = parseSource("toml", "alpha = 1\n");
+    const duplicated = parseSource("toml", "alpha = 1\nalpha = 2\n");
+    const repeatedTable = parseSource("toml", "[server]\nalpha = 1\n\n[server]\nbeta = 2\n");
+    const differentTables = parseSource("toml", "[box]\nalpha = 1\n\n[bag]\nalpha = 2\n");
+    if (!clean || !duplicated || !repeatedTable || !differentTables) {
+      throw new Error("parser unavailable");
+    }
+    expect(duplicated.hasErrors).toBe(false);
+    expect(duplicated.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(repeatedTable.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(differentTables.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
+    expect(verifyParsed("file.toml", duplicated, clean, clean).hazardous).toBe(true);
   });
 
   it("flags a repeated Kotlin function and ignores an undeclared call", () => {

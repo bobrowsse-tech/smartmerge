@@ -135,8 +135,10 @@ Swift functions and methods merge by name. Classes, structs, enums, and protocol
 
 SQL tables, views, and functions merge by name. A name keeps its schema qualification. A materialized view stays distinct from a view of the same name. Columns merge by name inside their table. A function body is left alone. A statement that both sides change is left alone. Inserts, assignments, and other statements are not merged by position. A clean SQL structural result stays in the high confidence band until a SQL replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
 
+TOML keys and tables merge by name. A quoted key matches a bare key of the same text. A dotted name stays a path of segments, so one quoted segment that contains a dot stays distinct from two segments. Keys inside a table merge by name. An array and an array of tables stay in order and are not merged by position. A comment is not a key. A key that both sides change is left alone. A clean TOML structural result stays in the high confidence band until a TOML replay corpus exists, so it is not marked certain and is not eligible for automatic apply.
+
 Tier 2: Python functions and classes, Go functions and methods, Java types and methods, Kotlin types and functions, C# types and methods, and Rust items are covered above.
-Tier 3: C, C++, PHP, Ruby, Swift, and SQL are covered above. TOML and XML remain.
+Tier 3: C, C++, PHP, Ruby, Swift, SQL, and TOML are covered above. XML remains.
 Unsupported: line-based strategies only, confidence caps apply.
 
 ## Failure handling

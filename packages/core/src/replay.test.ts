@@ -373,6 +373,28 @@ describe("replayConflicts", () => {
     });
   });
 
+  it("keeps a TOML whole-file merge in the high band", async () => {
+    const report = await replayConflicts([
+      {
+        repository: "sample",
+        path: "file.toml",
+        conflicted:
+          "prefix\n<<<<<<< current\n    return (\n=======\n    return [\n>>>>>>> incoming\nsuffix\n",
+        base: "alpha = 1\nbeta = 1\n",
+        current: "alpha = 2\nbeta = 1\n",
+        incoming: "alpha = 1\nbeta = 3\n",
+        humanResult: "alpha = 2\nbeta = 3\n",
+      },
+    ]);
+    expect(report.predicted).toBe(1);
+    expect(report.rows[0]).toEqual({
+      repository: "sample",
+      confidence: 0.95,
+      correct: true,
+      confidenceSource: "fixed-proposal",
+    });
+  });
+
   it("keeps a C++ whole-file merge in the high band", async () => {
     const report = await replayConflicts([
       {
