@@ -417,6 +417,28 @@ describe("replayConflicts", () => {
     });
   });
 
+  it("keeps a Markdown whole-file merge in the high band", async () => {
+    const report = await replayConflicts([
+      {
+        repository: "sample",
+        path: "file.md",
+        conflicted:
+          "prefix\n<<<<<<< current\n    return (\n=======\n    return [\n>>>>>>> incoming\nsuffix\n",
+        base: "# Alpha\n\n1\n\n# Beta\n\n1\n",
+        current: "# Alpha\n\n2\n\n# Beta\n\n1\n",
+        incoming: "# Alpha\n\n1\n\n# Beta\n\n3\n",
+        humanResult: "# Alpha\n\n2\n\n# Beta\n\n3\n",
+      },
+    ]);
+    expect(report.predicted).toBe(1);
+    expect(report.rows[0]).toEqual({
+      repository: "sample",
+      confidence: 0.95,
+      correct: true,
+      confidenceSource: "fixed-proposal",
+    });
+  });
+
   it("keeps a C++ whole-file merge in the high band", async () => {
     const report = await replayConflicts([
       {

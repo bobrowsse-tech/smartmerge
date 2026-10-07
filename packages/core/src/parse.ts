@@ -36,7 +36,7 @@ export interface ConcreteNode {
   type: string;
   /**
    * When false, an unstable node is not aligned by position.
-   * Python, Go, Java, Kotlin, C#, Rust, C, C++, PHP, Ruby, Swift, SQL, TOML, and XML statements use this so two assignments are not merged just because they line up.
+   * Python, Go, Java, Kotlin, C#, Rust, C, C++, PHP, Ruby, Swift, SQL, TOML, XML, and Markdown statements use this so two assignments are not merged just because they line up.
    */
   positional: boolean;
   /**
@@ -90,6 +90,7 @@ export const STRUCTURAL_LANGUAGES = [
   "sql",
   "toml",
   "xml",
+  "markdown",
 ] as const;
 
 const SUPPORTED = new Set<string>(STRUCTURAL_LANGUAGES);
@@ -243,6 +244,12 @@ async function loadParsers(): Promise<void> {
   const xml = await Language.load(
     grammar("@cursorless/tree-sitter-wasms/out/tree-sitter-xml.wasm", "tree-sitter-xml.wasm"),
   );
+  const markdown = await Language.load(
+    grammar(
+      "@cursorless/tree-sitter-wasms/out/tree-sitter-markdown.wasm",
+      "tree-sitter-markdown.wasm",
+    ),
+  );
   languages = new Map<string, Language>([
     ["typescript", typescript],
     ["typescriptreact", tsx],
@@ -264,6 +271,7 @@ async function loadParsers(): Promise<void> {
     ["sql", sql],
     ["toml", toml],
     ["xml", xml],
+    ["markdown", markdown],
   ]);
 }
 
@@ -360,6 +368,11 @@ function keyFor(languageId: string, node: SyntaxNode): { key: string; stable: bo
   if (languageId === "xml") {
     const xmlKey = xmlDefinitionKey(node);
     if (xmlKey !== null) return { key: xmlKey, stable: true };
+    return { key: node.type, stable: false };
+  }
+  if (languageId === "markdown") {
+    const markdownKey = markdownDefinitionKey(node);
+    if (markdownKey !== null) return { key: markdownKey, stable: true };
     return { key: node.type, stable: false };
   }
   if (node.type === "pair") {
@@ -498,6 +511,7 @@ function containerRange(
 ): { parent: SyntaxNode; start: number; end: number } | null {
   if (languageId === "toml") return tomlItemBody(node);
   if (languageId === "xml") return xmlItemBody(node);
+  if (languageId === "markdown") return markdownItemBody(node);
   if (languageId === "cpp") {
     const cppBody = cppItemBody(node);
     if (cppBody) return cppBody;
@@ -713,7 +727,8 @@ function statementPositional(languageId: string, stable: boolean): boolean {
     languageId !== "swift" &&
     languageId !== "sql" &&
     languageId !== "toml" &&
-    languageId !== "xml"
+    languageId !== "xml" &&
+    languageId !== "markdown"
   );
 }
 
@@ -2193,6 +2208,62 @@ function collectXmlSymbols(root: SyntaxNode): ParseIssue[] {
   return issues;
 }
 
+function markdownHeadingText(section: SyntaxNode): string | null {
+  if (section.type !== "section") return null;
+  for (const child of section.namedChildren) {
+    if (child.type !== "atx_heading") continue;
+    for (const inner of child.namedChildren) {
+      if (inner.type !== "inline" || inner.text.length === 0) continue;
+      return inner.text;
+    }
+    return null;
+  }
+  return null;
+}
+
+/** Stable key for a Markdown section. Only an ATX heading with text is named. */
+function markdownDefinitionKey(node: SyntaxNode): string | null {
+  const text = markdownHeadingText(node);
+  return text === null ? null : `section:${text}`;
+}
+
+function markdownItemBody(
+  node: SyntaxNode,
+): { parent: SyntaxNode; start: number; end: number } | null {
+  if (node.type !== "section") return null;
+  let headingEnd = -1;
+  for (const child of node.namedChildren) {
+    if (child.type === "atx_heading") {
+      headingEnd = child.endIndex;
+      break;
+    }
+  }
+  if (headingEnd < 0 || headingEnd >= node.endIndex) return null;
+  return { parent: node, start: headingEnd, end: node.endIndex };
+}
+
+function collectMarkdownSymbols(root: SyntaxNode): ParseIssue[] {
+  const issues: ParseIssue[] = [];
+  const visit = (node: SyntaxNode): void => {
+    const seen = new Set<string>();
+    for (const child of node.namedChildren) {
+      if (child.type !== "section") continue;
+      const key = markdownDefinitionKey(child);
+      if (key !== null && seen.has(key)) {
+        issues.push({
+          line: child.startPosition.row + 1,
+          message: `Duplicate declaration ${key.slice("section:".length)}`,
+          code: "duplicate",
+        });
+      }
+      if (key !== null) seen.add(key);
+    }
+    for (const child of node.namedChildren) visit(child);
+  };
+  visit(root);
+  return issues;
+}
+
 function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "python") return collectPythonSymbols(root);
   if (languageId === "go") return collectGoSymbols(root);
@@ -2208,6 +2279,7 @@ function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "sql") return collectSqlSymbols(root);
   if (languageId === "toml") return collectTomlSymbols(root);
   if (languageId === "xml") return collectXmlSymbols(root);
+  if (languageId === "markdown") return collectMarkdownSymbols(root);
   const issues: ParseIssue[] = [];
   const scopes: Array<Map<string, Binding>> = [new Map<string, Binding>()];
 

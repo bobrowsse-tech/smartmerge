@@ -22,7 +22,7 @@ const UNCHECKED_CAP = 0.8;
 
 /**
  * Fixed score for a structural result after syntax and symbol checks.
- * JSON, YAML, Python, Go, Java, Kotlin, C#, Rust, C, C++, PHP, Ruby, Swift, SQL, TOML, and XML stay in the high band until a replay corpus exists, so a clean merge is not marked certain.
+ * JSON, YAML, Python, Go, Java, Kotlin, C#, Rust, C, C++, PHP, Ruby, Swift, SQL, TOML, XML, and Markdown stay in the high band until a replay corpus exists, so a clean merge is not marked certain.
  */
 const HIGH_UNTIL_CORPUS = new Set([
   "json",
@@ -41,6 +41,7 @@ const HIGH_UNTIL_CORPUS = new Set([
   "sql",
   "toml",
   "xml",
+  "markdown",
 ]);
 
 export function structuralScore(
@@ -133,6 +134,11 @@ function structuralEvidence(languageId: string | null): { code: string; text: st
       return {
         code: "xml-elements",
         text: "Each side edited different elements. Untouched text is copied from the base.",
+      };
+    case "markdown":
+      return {
+        code: "markdown-sections",
+        text: "Each side edited different sections. Untouched text is copied from the base.",
       };
     default:
       return {
