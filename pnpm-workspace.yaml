@@ -25,3 +25,5 @@ allowBuilds:
   tree-sitter-php: false
   tree-sitter-ruby: false
   "@binclusive/tree-sitter-swift-wasm": false
+  "@l1xnan/tree-sitter-sql": false
+  tree-sitter: false

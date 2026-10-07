@@ -1662,6 +1662,173 @@ describe("structural strategies", () => {
     );
   });
 
+  it("merges SQL tables that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "sql",
+      "file.sql",
+      "CREATE TABLE alpha (id INT);\nCREATE TABLE beta (id INT);\n",
+      "CREATE TABLE alpha (id TEXT);\nCREATE TABLE beta (id INT);\n",
+      "CREATE TABLE alpha (id INT);\nCREATE TABLE beta (id TEXT);\n",
+    );
+    expect(chosen?.recommended).toBe("hunk:1:structural-3way");
+    expect(chosen?.candidates[0]).toMatchObject({
+      result: "CREATE TABLE alpha (id TEXT);\nCREATE TABLE beta (id TEXT);\n",
+      band: "high",
+      confidence: 0.95,
+      hazardous: false,
+      evidence: [
+        {
+          code: "sql-defs",
+          text: "Each side edited different statements. Untouched text is copied from the base.",
+        },
+      ],
+    });
+    expect(chosen?.autoApplyEligible).toBe(false);
+  });
+
+  it("merges SQL views that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "sql",
+      "file.sql",
+      "CREATE VIEW alpha AS SELECT 1;\nCREATE VIEW beta AS SELECT 1;\n",
+      "CREATE VIEW alpha AS SELECT 2;\nCREATE VIEW beta AS SELECT 1;\n",
+      "CREATE VIEW alpha AS SELECT 1;\nCREATE VIEW beta AS SELECT 3;\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "CREATE VIEW alpha AS SELECT 2;\nCREATE VIEW beta AS SELECT 3;\n",
+    );
+  });
+
+  it("merges SQL functions that each side edits", () => {
+    const base =
+      "CREATE FUNCTION alpha() RETURNS INT LANGUAGE SQL AS $$ SELECT 1 $$;\nCREATE FUNCTION beta() RETURNS INT LANGUAGE SQL AS $$ SELECT 1 $$;\n";
+    const chosen = proposalForLanguage(
+      "sql",
+      "file.sql",
+      base,
+      "CREATE FUNCTION alpha() RETURNS INT LANGUAGE SQL AS $$ SELECT 2 $$;\nCREATE FUNCTION beta() RETURNS INT LANGUAGE SQL AS $$ SELECT 1 $$;\n",
+      "CREATE FUNCTION alpha() RETURNS INT LANGUAGE SQL AS $$ SELECT 1 $$;\nCREATE FUNCTION beta() RETURNS INT LANGUAGE SQL AS $$ SELECT 3 $$;\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "CREATE FUNCTION alpha() RETURNS INT LANGUAGE SQL AS $$ SELECT 2 $$;\nCREATE FUNCTION beta() RETURNS INT LANGUAGE SQL AS $$ SELECT 3 $$;\n",
+    );
+  });
+
+  it("merges SQL columns in one table", () => {
+    const base = "CREATE TABLE box (\n  id INT,\n  name TEXT\n);\n";
+    const chosen = proposalForLanguage(
+      "sql",
+      "file.sql",
+      base,
+      "CREATE TABLE box (\n  id TEXT,\n  name TEXT\n);\n",
+      "CREATE TABLE box (\n  id INT,\n  name INT\n);\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe("CREATE TABLE box (\n  id TEXT,\n  name INT\n);\n");
+  });
+
+  it("keeps the same SQL column name distinct on two tables", () => {
+    const base = "CREATE TABLE box (id INT);\nCREATE TABLE bag (id INT);\n";
+    const chosen = proposalForLanguage(
+      "sql",
+      "file.sql",
+      base,
+      "CREATE TABLE box (id TEXT);\nCREATE TABLE bag (id INT);\n",
+      "CREATE TABLE box (id INT);\nCREATE TABLE bag (id TEXT);\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "CREATE TABLE box (id TEXT);\nCREATE TABLE bag (id TEXT);\n",
+    );
+  });
+
+  it("keeps a qualified SQL table distinct from another schema", () => {
+    const base = "CREATE TABLE app.users (id INT);\nCREATE TABLE other.users (id INT);\n";
+    const chosen = proposalForLanguage(
+      "sql",
+      "file.sql",
+      base,
+      "CREATE TABLE app.users (id TEXT);\nCREATE TABLE other.users (id INT);\n",
+      "CREATE TABLE app.users (id INT);\nCREATE TABLE other.users (id TEXT);\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "CREATE TABLE app.users (id TEXT);\nCREATE TABLE other.users (id TEXT);\n",
+    );
+  });
+
+  it("keeps a SQL materialized view distinct from a view of the same name", () => {
+    const base = "CREATE MATERIALIZED VIEW alpha AS SELECT 1;\nCREATE VIEW alpha AS SELECT 1;\n";
+    const chosen = proposalForLanguage(
+      "sql",
+      "file.sql",
+      base,
+      "CREATE MATERIALIZED VIEW alpha AS SELECT 2;\nCREATE VIEW alpha AS SELECT 1;\n",
+      "CREATE MATERIALIZED VIEW alpha AS SELECT 1;\nCREATE VIEW alpha AS SELECT 3;\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "CREATE MATERIALIZED VIEW alpha AS SELECT 2;\nCREATE VIEW alpha AS SELECT 3;\n",
+    );
+  });
+
+  it("does not merge a SQL table that both sides change", () => {
+    const chosen = proposalForLanguage(
+      "sql",
+      "file.sql",
+      "CREATE TABLE alpha (id INT);\n",
+      "CREATE TABLE alpha (id TEXT);\n",
+      "CREATE TABLE alpha (id BIGINT);\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge SQL inserts by position", () => {
+    const chosen = proposalForLanguage(
+      "sql",
+      "file.sql",
+      "INSERT INTO left_side VALUES (1);\nINSERT INTO right_side VALUES (2);\n",
+      "INSERT INTO alpha VALUES (1);\nINSERT INTO beta VALUES (2);\n",
+      "INSERT INTO other VALUES (1);\nINSERT INTO extra VALUES (2);\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "rename-aware")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge SQL assignments inside one insert", () => {
+    const chosen = proposalForLanguage(
+      "sql",
+      "file.sql",
+      "INSERT INTO box SET id = 1, name = 1;\n",
+      "INSERT INTO box SET id = 2, name = 1;\n",
+      "INSERT INTO box SET id = 1, name = 3;\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge a declaration inside a SQL function body", () => {
+    const base =
+      "CREATE FUNCTION alpha() RETURNS INT LANGUAGE SQL AS $$\nDECLARE y INT := 1;\nBEGIN\nRETURN 1;\nEND\n$$;\n";
+    const chosen = proposalForLanguage(
+      "sql",
+      "file.sql",
+      base,
+      "CREATE FUNCTION alpha() RETURNS INT LANGUAGE SQL AS $$\nDECLARE y INT := 2;\nBEGIN\nRETURN 1;\nEND\n$$;\n",
+      "CREATE FUNCTION alpha() RETURNS INT LANGUAGE SQL AS $$\nDECLARE y INT := 3;\nBEGIN\nRETURN 1;\nEND\n$$;\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
   it("does not merge a Python function that both sides change", () => {
     const chosen = proposalForLanguage(
       "python",
@@ -1702,6 +1869,7 @@ describe("structural languages", () => {
     expect(STRUCTURAL_LANGUAGES).toContain("php");
     expect(STRUCTURAL_LANGUAGES).toContain("ruby");
     expect(STRUCTURAL_LANGUAGES).toContain("swift");
+    expect(STRUCTURAL_LANGUAGES).toContain("sql");
     for (const languageId of STRUCTURAL_LANGUAGES) {
       expect(isStructuralLanguage(languageId)).toBe(true);
     }
@@ -1899,6 +2067,47 @@ describe("breakage checks", () => {
     expect(differentType.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
     expect(called.symbolIssues.some((issue) => issue.code === "undeclared")).toBe(false);
     expect(verifyParsed("file.swift", duplicated, clean, clean).hazardous).toBe(true);
+  });
+
+  it("flags a repeated SQL table or function and ignores an invocation", () => {
+    const clean = parseSource("sql", "CREATE TABLE alpha (id INT);\n");
+    const duplicated = parseSource(
+      "sql",
+      "CREATE TABLE alpha (id INT);\nCREATE TABLE alpha (name TEXT);\n",
+    );
+    const repeatedFunction = parseSource(
+      "sql",
+      "CREATE FUNCTION alpha() RETURNS INT LANGUAGE SQL AS $$ SELECT 1 $$;\nCREATE FUNCTION alpha() RETURNS INT LANGUAGE SQL AS $$ SELECT 2 $$;\n",
+    );
+    const repeatedView = parseSource(
+      "sql",
+      "CREATE VIEW alpha AS SELECT 1;\nCREATE VIEW alpha AS SELECT 2;\n",
+    );
+    const differentSchema = parseSource(
+      "sql",
+      "CREATE TABLE app.users (id INT);\nCREATE TABLE other.users (id INT);\n",
+    );
+    const called = parseSource(
+      "sql",
+      "CREATE FUNCTION alpha() RETURNS INT LANGUAGE SQL AS $$ SELECT missing(1) $$;\n",
+    );
+    if (
+      !clean ||
+      !duplicated ||
+      !repeatedFunction ||
+      !repeatedView ||
+      !differentSchema ||
+      !called
+    ) {
+      throw new Error("parser unavailable");
+    }
+    expect(duplicated.hasErrors).toBe(false);
+    expect(duplicated.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(repeatedFunction.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(repeatedView.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
+    expect(differentSchema.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
+    expect(called.symbolIssues.some((issue) => issue.code === "undeclared")).toBe(false);
+    expect(verifyParsed("file.sql", duplicated, clean, clean).hazardous).toBe(true);
   });
 
   it("flags a repeated Kotlin function and ignores an undeclared call", () => {
