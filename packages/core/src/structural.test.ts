@@ -1409,6 +1409,132 @@ describe("structural strategies", () => {
     );
   });
 
+  it("merges Ruby methods that each side edits", () => {
+    const chosen = proposalForLanguage(
+      "ruby",
+      "file.rb",
+      "def alpha\n  1\nend\ndef beta\n  1\nend\n",
+      "def alpha\n  2\nend\ndef beta\n  1\nend\n",
+      "def alpha\n  1\nend\ndef beta\n  3\nend\n",
+    );
+    expect(chosen?.recommended).toBe("hunk:1:structural-3way");
+    expect(chosen?.candidates[0]).toMatchObject({
+      result: "def alpha\n  2\nend\ndef beta\n  3\nend\n",
+      band: "high",
+      confidence: 0.95,
+      hazardous: false,
+      evidence: [
+        {
+          code: "ruby-defs",
+          text: "Each side edited different methods or types. Untouched text is copied from the base.",
+        },
+      ],
+    });
+    expect(chosen?.autoApplyEligible).toBe(false);
+  });
+
+  it("merges Ruby methods in one class", () => {
+    const base = "class Box\n  def left\n    1\n  end\n  def right\n    1\n  end\nend\n";
+    const chosen = proposalForLanguage(
+      "ruby",
+      "file.rb",
+      base,
+      "class Box\n  def left\n    2\n  end\n  def right\n    1\n  end\nend\n",
+      "class Box\n  def left\n    1\n  end\n  def right\n    3\n  end\nend\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "class Box\n  def left\n    2\n  end\n  def right\n    3\n  end\nend\n",
+    );
+  });
+
+  it("keeps a Ruby singleton method distinct from an instance method", () => {
+    const base = "class Box\n  def alpha\n    1\n  end\n  def self.alpha\n    1\n  end\nend\n";
+    const chosen = proposalForLanguage(
+      "ruby",
+      "file.rb",
+      base,
+      "class Box\n  def alpha\n    2\n  end\n  def self.alpha\n    1\n  end\nend\n",
+      "class Box\n  def alpha\n    1\n  end\n  def self.alpha\n    3\n  end\nend\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "class Box\n  def alpha\n    2\n  end\n  def self.alpha\n    3\n  end\nend\n",
+    );
+  });
+
+  it("keeps the same Ruby method name distinct on two classes", () => {
+    const base =
+      "class Box\n  def left\n    1\n  end\nend\nclass Bag\n  def left\n    1\n  end\nend\n";
+    const chosen = proposalForLanguage(
+      "ruby",
+      "file.rb",
+      base,
+      "class Box\n  def left\n    2\n  end\nend\nclass Bag\n  def left\n    1\n  end\nend\n",
+      "class Box\n  def left\n    1\n  end\nend\nclass Bag\n  def left\n    3\n  end\nend\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "class Box\n  def left\n    2\n  end\nend\nclass Bag\n  def left\n    3\n  end\nend\n",
+    );
+  });
+
+  it("merges a Ruby method inside a module", () => {
+    const base = "module App\n  def alpha\n    1\n  end\n  def beta\n    1\n  end\nend\n";
+    const chosen = proposalForLanguage(
+      "ruby",
+      "file.rb",
+      base,
+      "module App\n  def alpha\n    2\n  end\n  def beta\n    1\n  end\nend\n",
+      "module App\n  def alpha\n    1\n  end\n  def beta\n    3\n  end\nend\n",
+    );
+    expect(chosen?.candidates[0]?.result).toBe(
+      "module App\n  def alpha\n    2\n  end\n  def beta\n    3\n  end\nend\n",
+    );
+  });
+
+  it("does not merge Ruby assignments inside a method by position", () => {
+    const chosen = proposalForLanguage(
+      "ruby",
+      "file.rb",
+      "def alpha\n  x = 1\n  y = 1\n  return x\nend\n",
+      "def alpha\n  x = 2\n  y = 1\n  return x\nend\n",
+      "def alpha\n  x = 1\n  y = 3\n  return x\nend\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge Ruby require calls by position", () => {
+    const chosen = proposalForLanguage(
+      "ruby",
+      "file.rb",
+      'require "left"\nrequire "right"\n',
+      'require "alpha"\nrequire "beta"\n',
+      'require "other"\nrequire "extra"\n',
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "rename-aware")).toBe(
+      false,
+    );
+  });
+
+  it("does not merge a Ruby method that both sides change", () => {
+    const chosen = proposalForLanguage(
+      "ruby",
+      "file.rb",
+      "def alpha\n  1\nend\n",
+      "def alpha\n  2\nend\n",
+      "def alpha\n  3\nend\n",
+    );
+    expect(chosen?.recommended).toBeNull();
+    expect(chosen?.candidates.some((candidate) => candidate.strategy === "structural-3way")).toBe(
+      false,
+    );
+  });
+
   it("does not merge a Python function that both sides change", () => {
     const chosen = proposalForLanguage(
       "python",
@@ -1447,6 +1573,7 @@ describe("structural languages", () => {
     expect(STRUCTURAL_LANGUAGES).toContain("c");
     expect(STRUCTURAL_LANGUAGES).toContain("cpp");
     expect(STRUCTURAL_LANGUAGES).toContain("php");
+    expect(STRUCTURAL_LANGUAGES).toContain("ruby");
     for (const languageId of STRUCTURAL_LANGUAGES) {
       expect(isStructuralLanguage(languageId)).toBe(true);
     }
@@ -1609,6 +1736,22 @@ describe("breakage checks", () => {
     expect(differentType.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
     expect(called.symbolIssues.some((issue) => issue.code === "undeclared")).toBe(false);
     expect(verifyParsed("file.php", duplicated, clean, clean).hazardous).toBe(true);
+  });
+
+  it("flags a repeated Ruby method and ignores an undeclared call", () => {
+    const clean = parseSource("ruby", "def alpha\n  1\nend\n");
+    const duplicated = parseSource("ruby", "def alpha\n  1\nend\ndef alpha\n  2\nend\n");
+    const differentType = parseSource(
+      "ruby",
+      "class Box\n  def left\n    1\n  end\nend\nclass Bag\n  def left\n    2\n  end\nend\n",
+    );
+    const called = parseSource("ruby", "def alpha\n  missing\nend\n");
+    if (!clean || !duplicated || !differentType || !called) throw new Error("parser unavailable");
+    expect(duplicated.hasErrors).toBe(false);
+    expect(duplicated.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(true);
+    expect(differentType.symbolIssues.some((issue) => issue.code === "duplicate")).toBe(false);
+    expect(called.symbolIssues.some((issue) => issue.code === "undeclared")).toBe(false);
+    expect(verifyParsed("file.rb", duplicated, clean, clean).hazardous).toBe(true);
   });
 
   it("flags a repeated Kotlin function and ignores an undeclared call", () => {

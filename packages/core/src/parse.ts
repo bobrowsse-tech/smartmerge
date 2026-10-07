@@ -36,7 +36,7 @@ export interface ConcreteNode {
   type: string;
   /**
    * When false, an unstable node is not aligned by position.
-   * Python, Go, Java, Kotlin, C#, Rust, C, C++, and PHP statements use this so two assignments are not merged just because they line up.
+   * Python, Go, Java, Kotlin, C#, Rust, C, C++, PHP, and Ruby statements use this so two assignments are not merged just because they line up.
    */
   positional: boolean;
   body: string;
@@ -80,6 +80,7 @@ export const STRUCTURAL_LANGUAGES = [
   "c",
   "cpp",
   "php",
+  "ruby",
 ] as const;
 
 const SUPPORTED = new Set<string>(STRUCTURAL_LANGUAGES);
@@ -215,6 +216,9 @@ async function loadParsers(): Promise<void> {
   const php = await Language.load(
     grammar("tree-sitter-php/tree-sitter-php_only.wasm", "tree-sitter-php_only.wasm"),
   );
+  const ruby = await Language.load(
+    grammar("tree-sitter-ruby/tree-sitter-ruby.wasm", "tree-sitter-ruby.wasm"),
+  );
   languages = new Map<string, Language>([
     ["typescript", typescript],
     ["typescriptreact", tsx],
@@ -231,6 +235,7 @@ async function loadParsers(): Promise<void> {
     ["c", c],
     ["cpp", cpp],
     ["php", php],
+    ["ruby", ruby],
   ]);
 }
 
@@ -374,6 +379,11 @@ function keyFor(languageId: string, node: SyntaxNode): { key: string; stable: bo
     if (phpKey !== null) return { key: phpKey, stable: true };
     return { key: node.type, stable: false };
   }
+  if (languageId === "ruby") {
+    const rubyKey = rubyDefinitionKey(node);
+    if (rubyKey !== null) return { key: rubyKey, stable: true };
+    return { key: node.type, stable: false };
+  }
   const defined = pythonDefinition(node);
   if (defined) {
     const definitionName = defined.childForFieldName("name");
@@ -443,6 +453,10 @@ function containerRange(
   if (languageId === "php") {
     const phpBody = phpItemBody(node);
     if (phpBody) return phpBody;
+  }
+  if (languageId === "ruby") {
+    const rubyBody = rubyItemBody(node);
+    if (rubyBody) return rubyBody;
   }
   const cBody = cItemBody(node);
   if (cBody) return cBody;
@@ -640,7 +654,8 @@ function statementPositional(languageId: string, stable: boolean): boolean {
     languageId !== "rust" &&
     languageId !== "c" &&
     languageId !== "cpp" &&
-    languageId !== "php"
+    languageId !== "php" &&
+    languageId !== "ruby"
   );
 }
 
@@ -1610,6 +1625,87 @@ function collectPhpSymbols(root: SyntaxNode): ParseIssue[] {
   return issues;
 }
 
+function rubyFieldName(node: SyntaxNode): string {
+  const named = node.childForFieldName("name");
+  return named && named.text.length > 0 ? named.text : "";
+}
+
+/** Enclosing class and module names, outer first. */
+function rubyOwners(node: SyntaxNode): string[] {
+  const owners: string[] = [];
+  let current: SyntaxNode | null = node.parent;
+  while (current) {
+    if (current.type === "class" || current.type === "module") {
+      const text = rubyFieldName(current);
+      if (text.length > 0) owners.unshift(text);
+    }
+    current = current.parent;
+  }
+  return owners;
+}
+
+function rubyQualified(node: SyntaxNode, name: string): string {
+  return [...rubyOwners(node), name].join(".");
+}
+
+function rubyItemBody(node: SyntaxNode): { parent: SyntaxNode; start: number; end: number } | null {
+  if (node.type !== "class" && node.type !== "module") return null;
+  if (rubyFieldName(node).length === 0) return null;
+  const body = node.childForFieldName("body");
+  if (!body || body.type !== "body_statement" || body.endIndex <= body.startIndex) return null;
+  return { parent: body, start: body.startIndex, end: body.endIndex };
+}
+
+/** Stable key for a Ruby method, class, module, or singleton method. Statements stay unnamed. */
+function rubyDefinitionKey(node: SyntaxNode): string | null {
+  if (node.type === "method") {
+    const name = rubyFieldName(node);
+    return name.length > 0 ? `method:${rubyQualified(node, name)}` : null;
+  }
+  if (node.type === "class") {
+    const name = rubyFieldName(node);
+    return name.length > 0 ? `class:${rubyQualified(node, name)}` : null;
+  }
+  if (node.type === "module") {
+    const name = rubyFieldName(node);
+    return name.length > 0 ? `module:${rubyQualified(node, name)}` : null;
+  }
+  if (node.type === "singleton_method") {
+    const name = rubyFieldName(node);
+    if (name.length === 0) return null;
+    const parts = rubyOwners(node);
+    const object = node.childForFieldName("object");
+    if (object?.type === "identifier" && object.text.length > 0) parts.push(object.text);
+    parts.push(name);
+    return `singleton:${parts.join(".")}`;
+  }
+  return null;
+}
+
+function collectRubySymbols(root: SyntaxNode): ParseIssue[] {
+  const issues: ParseIssue[] = [];
+  const seen = new Set<string>();
+  const visit = (node: SyntaxNode): void => {
+    const key = rubyDefinitionKey(node);
+    if (key !== null) {
+      const repeated = key.startsWith("method:") || key.startsWith("singleton:");
+      if (repeated && seen.has(key)) {
+        const label = key.slice(key.indexOf(":") + 1);
+        issues.push({
+          line: node.startPosition.row + 1,
+          message: `Duplicate declaration ${label}`,
+          code: "duplicate",
+        });
+      }
+      if (repeated) seen.add(key);
+      if (node.type === "method" || node.type === "singleton_method") return;
+    }
+    for (const child of node.namedChildren) visit(child);
+  };
+  visit(root);
+  return issues;
+}
+
 function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "python") return collectPythonSymbols(root);
   if (languageId === "go") return collectGoSymbols(root);
@@ -1620,6 +1716,7 @@ function collectSymbols(languageId: string, root: SyntaxNode): ParseIssue[] {
   if (languageId === "c") return collectCSymbols(root);
   if (languageId === "cpp") return collectCppSymbols(root);
   if (languageId === "php") return collectPhpSymbols(root);
+  if (languageId === "ruby") return collectRubySymbols(root);
   const issues: ParseIssue[] = [];
   const scopes: Array<Map<string, Binding>> = [new Map<string, Binding>()];
 

@@ -290,6 +290,8 @@ function languageIdFor(path: string): string | null {
       return "cpp";
     case "php":
       return "php";
+    case "rb":
+      return "ruby";
     case "java":
       return "java";
     case "kt":
