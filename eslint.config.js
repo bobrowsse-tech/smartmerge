@@ -36,4 +36,47 @@ export default tseslint.config(
       "@typescript-eslint/no-invalid-void-type": "off",
     },
   },
+  {
+    files: ["packages/adapters/**/*.ts"],
+    rules: {
+      // The TypeScript rule checks `import type`. Adapters must not reach conflict logic through a type import.
+      "@typescript-eslint/no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@smartmerge/core",
+              message:
+                "Adapters render state and forward actions. They must not import resolution, merge, or strategy modules.",
+              allowTypeImports: false,
+            },
+          ],
+          patterns: [
+            {
+              group: [
+                "**/core/src/strategies",
+                "**/core/src/strategies.js",
+                "**/core/src/strategies.ts",
+                "**/core/src/structure",
+                "**/core/src/structure.js",
+                "**/core/src/structure.ts",
+                "**/core/src/verify",
+                "**/core/src/verify.js",
+                "**/core/src/verify.ts",
+                "**/core/src/apply",
+                "**/core/src/apply.js",
+                "**/core/src/apply.ts",
+                "**/core/src/index",
+                "**/core/src/index.js",
+                "**/core/src/index.ts",
+              ],
+              message:
+                "Adapters render state and forward actions. They must not import resolution, merge, or strategy modules.",
+              allowTypeImports: false,
+            },
+          ],
+        },
+      ],
+    },
+  },
 );
