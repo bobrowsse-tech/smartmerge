@@ -61,11 +61,13 @@ No conflict logic, ever.
 
 `smartmerged --lsp` exposes:
 
-- `textDocument/codeAction`: "Accept recommended", "Accept ours/theirs/both".
+- `textDocument/codeAction`: "Accept recommended", "Accept ours", and "Accept theirs".
 - `textDocument/codeLens`: recommendation and confidence.
 - `textDocument/publishDiagnostics`: breakage warnings.
 - `workspace/executeCommand` for extra actions.
   This gives Zed, Sublime, Helix, Emacs, and any LSP client basic support with zero editor-specific logic.
+
+`smartmerged --lsp` forwards `initialize`, `textDocument/codeAction`, `textDocument/codeLens`, `textDocument/publishDiagnostics`, and `workspace/executeCommand` to the daemon. Accept both is omitted, because the daemon returns two orders for taking both sides.
 
 ## Visual Studio adapter (P2)
 
