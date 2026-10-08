@@ -4,16 +4,20 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   FORBIDDEN_IMPORTS,
+  adapterKotlinText,
   adapterLuaText,
   forbiddenImports,
+  forbiddenKotlinText,
   forbiddenLuaText,
   scanAdapter,
+  scanKotlinAdapter,
   scanLuaAdapter,
 } from "./imports.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const vscodeRoot = path.join(repoRoot, "packages/adapters/vscode");
 const neovimRoot = path.join(repoRoot, "packages/adapters/neovim");
+const jetbrainsRoot = path.join(repoRoot, "packages/adapters/jetbrains");
 
 describe("adapter import contract", () => {
   it("accepts every TypeScript file in the current editor adapter", () => {
@@ -80,6 +84,27 @@ describe("adapter import contract", () => {
       "resolution/act",
       "SmartMergeResolve",
       "SmartMergeAcceptAll",
+    ]) {
+      expect(source).toContain(name);
+    }
+  });
+
+  it("rejects Kotlin that names a forbidden module and accepts the daemon client", () => {
+    expect(forbiddenKotlinText(`val path = "core/src/structure.js"\n`)).toContain(
+      "core/src/structure.js",
+    );
+    expect(
+      forbiddenKotlinText(`request("resolution/act", jStr("accept"))\napplyAllSafe\n`),
+    ).toEqual([]);
+    expect(scanKotlinAdapter(jetbrainsRoot)).toEqual([]);
+    const source = adapterKotlinText(jetbrainsRoot);
+    for (const name of [
+      "initialize",
+      "conflicts/list",
+      "resolution/propose",
+      "resolution/act",
+      "applyAllSafe",
+      "accept",
     ]) {
       expect(source).toContain(name);
     }

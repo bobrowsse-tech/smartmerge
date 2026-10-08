@@ -88,6 +88,36 @@ export function adapterLuaText(adapterRoot: string): string {
     .join("\n");
 }
 
+/**
+ * Returns forbidden module paths named anywhere in Kotlin adapter source.
+ * The check is the module path string, same as the Lua scan.
+ */
+export function forbiddenKotlinText(source: string): readonly string[] {
+  return FORBIDDEN_IMPORTS.filter((forbidden) => source.includes(forbidden));
+}
+
+/**
+ * Reads every Kotlin file under `adapterRoot` and returns forbidden module paths.
+ * `adapterRoot` is the adapter directory, such as `packages/adapters/jetbrains`.
+ */
+export function scanKotlinAdapter(adapterRoot: string): readonly ForbiddenImport[] {
+  const found: ForbiddenImport[] = [];
+  for (const file of filesEnding(adapterRoot, ".kt")) {
+    const source = readFileSync(file, "utf8");
+    for (const specifier of forbiddenKotlinText(source)) {
+      found.push({ file, specifier });
+    }
+  }
+  return found;
+}
+
+/** Concatenated Kotlin source under `adapterRoot`, for contract assertions. */
+export function adapterKotlinText(adapterRoot: string): string {
+  return filesEnding(adapterRoot, ".kt")
+    .map((file) => readFileSync(file, "utf8"))
+    .join("\n");
+}
+
 /** True when `specifier` names a strategy, merge, or resolution module. */
 export function isForbiddenImport(specifier: string): boolean {
   const normalized = specifier.replaceAll("\\", "/");

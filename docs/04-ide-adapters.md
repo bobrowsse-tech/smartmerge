@@ -50,6 +50,8 @@ No conflict logic, ever.
 - Daemon is launched as external process using bundled Node or system Node (detect; offer download).
 - Keep Kotlin under about 1.5k lines; generated protocol bindings from `06-protocol.types.ts` (via JSON Schema → Kotlin codegen).
 
+`packages/adapters/jetbrains` forwards daemon requests and does not merge. The IDE dialog hook is not in this slice.
+
 ## Neovim adapter (P1)
 
 - Lua plugin; talks to daemon over stdio using `vim.system`/jobstart.
