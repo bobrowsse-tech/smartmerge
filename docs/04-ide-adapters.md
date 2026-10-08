@@ -57,6 +57,8 @@ No conflict logic, ever.
 - Optional integration as `git mergetool` command.
 - Heavy UI (3-pane) opens in browser via `smart-merge ui`.
 
+`packages/adapters/neovim` forwards `initialize`, `conflicts/list`, `resolution/propose`, and `resolution/act` to the daemon. It draws the recommendation and confidence the daemon returned. It does not merge.
+
 ## LSP facade (P2 editors)
 
 `smartmerged --lsp` exposes:

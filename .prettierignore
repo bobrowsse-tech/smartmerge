@@ -6,6 +6,7 @@ pnpm-lock.yaml
 private
 smartmerge-build-kit.zip
 *.tsbuildinfo
+*.lua
 LICENSE
 LICENSES
 **/LICENSE
