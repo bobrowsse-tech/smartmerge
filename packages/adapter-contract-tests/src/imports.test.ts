@@ -2,10 +2,18 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { FORBIDDEN_IMPORTS, forbiddenImports, scanAdapter } from "./imports.js";
+import {
+  FORBIDDEN_IMPORTS,
+  adapterLuaText,
+  forbiddenImports,
+  forbiddenLuaText,
+  scanAdapter,
+  scanLuaAdapter,
+} from "./imports.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const vscodeRoot = path.join(repoRoot, "packages/adapters/vscode");
+const neovimRoot = path.join(repoRoot, "packages/adapters/neovim");
 
 describe("adapter import contract", () => {
   it("accepts every TypeScript file in the current editor adapter", () => {
@@ -54,6 +62,27 @@ describe("adapter import contract", () => {
       `import { acceptFile, undoFile } from "./resolve.js";`,
     ].join("\n");
     expect(forbiddenImports(source)).toEqual([]);
+  });
+
+  it("rejects Lua that names a forbidden module and accepts the editor plugin", () => {
+    expect(forbiddenLuaText(`local path = "core/src/structure.js"\n`)).toContain(
+      "core/src/structure.js",
+    );
+    expect(
+      forbiddenLuaText(`client.request("resolution/act", { type = "accept" })\napplyAllSafe\n`),
+    ).toEqual([]);
+    expect(scanLuaAdapter(neovimRoot)).toEqual([]);
+    const source = adapterLuaText(neovimRoot);
+    for (const name of [
+      "initialize",
+      "conflicts/list",
+      "resolution/propose",
+      "resolution/act",
+      "SmartMergeResolve",
+      "SmartMergeAcceptAll",
+    ]) {
+      expect(source).toContain(name);
+    }
   });
 
   it("lists the same modules in the adapter lint rule", () => {

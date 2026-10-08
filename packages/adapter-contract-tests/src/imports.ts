@@ -49,13 +49,43 @@ export function forbiddenImports(source: string): readonly string[] {
  */
 export function scanAdapter(adapterRoot: string): readonly ForbiddenImport[] {
   const found: ForbiddenImport[] = [];
-  for (const file of typescriptFiles(path.join(adapterRoot, "src"))) {
+  for (const file of filesEnding(path.join(adapterRoot, "src"), ".ts")) {
     const source = readFileSync(file, "utf8");
     for (const specifier of forbiddenImports(source)) {
       found.push({ file, specifier });
     }
   }
   return found;
+}
+
+/**
+ * Returns forbidden module paths named anywhere in Lua adapter source.
+ * Lua has no import-from syntax, so the check is the module path string.
+ */
+export function forbiddenLuaText(source: string): readonly string[] {
+  return FORBIDDEN_IMPORTS.filter((forbidden) => source.includes(forbidden));
+}
+
+/**
+ * Reads every Lua file under `adapterRoot` and returns forbidden module paths.
+ * `adapterRoot` is the adapter directory, such as `packages/adapters/neovim`.
+ */
+export function scanLuaAdapter(adapterRoot: string): readonly ForbiddenImport[] {
+  const found: ForbiddenImport[] = [];
+  for (const file of filesEnding(adapterRoot, ".lua")) {
+    const source = readFileSync(file, "utf8");
+    for (const specifier of forbiddenLuaText(source)) {
+      found.push({ file, specifier });
+    }
+  }
+  return found;
+}
+
+/** Concatenated Lua source under `adapterRoot`, for contract assertions. */
+export function adapterLuaText(adapterRoot: string): string {
+  return filesEnding(adapterRoot, ".lua")
+    .map((file) => readFileSync(file, "utf8"))
+    .join("\n");
 }
 
 /** True when `specifier` names a strategy, merge, or resolution module. */
@@ -99,13 +129,19 @@ function spanCrossesStatement(span: string): boolean {
   );
 }
 
-function typescriptFiles(directory: string): readonly string[] {
+function filesEnding(directory: string, suffix: string): readonly string[] {
+  let entries: string[];
+  try {
+    entries = readdirSync(directory);
+  } catch {
+    return [];
+  }
   const files: string[] = [];
-  for (const entry of readdirSync(directory)) {
+  for (const entry of entries) {
     const full = path.join(directory, entry);
     if (statSync(full).isDirectory()) {
-      files.push(...typescriptFiles(full));
-    } else if (entry.endsWith(".ts") && !entry.endsWith(".d.ts")) {
+      files.push(...filesEnding(full, suffix));
+    } else if (entry.endsWith(suffix) && !entry.endsWith(".d.ts")) {
       files.push(full);
     }
   }
