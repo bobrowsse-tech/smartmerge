@@ -1,9 +1,14 @@
 #!/usr/bin/env node
+import { startLspServer } from "./lsp.js";
 import { startStdioServer } from "./stdio.js";
 
-if (!process.argv.includes("--stdio")) {
-  process.stderr.write("Usage: smartmerged --stdio\n");
+const lsp = process.argv.includes("--lsp");
+const stdio = process.argv.includes("--stdio");
+
+if (lsp === stdio) {
+  process.stderr.write("Usage: smartmerged --stdio\n       smartmerged --lsp\n");
   process.exit(2);
 }
 
-startStdioServer();
+if (lsp) startLspServer();
+else startStdioServer();
