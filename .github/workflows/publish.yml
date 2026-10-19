@@ -118,7 +118,6 @@ jobs:
           pnpm --filter @smartmerge/vscode exec vsce publish --pre-release --packagePath "$vsix" -p "$VSCE_PAT"
           pnpm --filter @smartmerge/vscode exec ovsx publish "$vsix" --pre-release --pat "$OVSX_PAT"
 
-
       - name: Refresh extension directory
         if: ${{ !cancelled() }}
         continue-on-error: true
